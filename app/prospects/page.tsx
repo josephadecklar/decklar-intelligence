@@ -57,6 +57,7 @@ export default async function ProspectsPage() {
     const { data: prospects } = await supabase
         .from('company_research')
         .select('*')
+        .eq('status', 'prospect')
         .order('lead_score', { ascending: false })
 
     return (
