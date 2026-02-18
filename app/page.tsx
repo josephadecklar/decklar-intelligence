@@ -22,18 +22,25 @@ export default function Dashboard() {
       .order('updated_at', { ascending: false })
 
     const now = new Date()
+    const todayStart = new Date(now)
+    todayStart.setHours(0, 0, 0, 0)
+
+    const sevenDaysAgo = new Date(now)
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
 
     if (filter === 'Today') {
-      const todayStart = new Date(now)
-      todayStart.setHours(0, 0, 0, 0)
+      // Buckets: Discrete Range for Today
       query = query.gte('updated_at', todayStart.toISOString())
     } else if (filter === 'Last 7 Days') {
-      const sevenDaysAgo = new Date(now)
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      sevenDaysAgo.setHours(0, 0, 0, 0)
-      query = query.gte('updated_at', sevenDaysAgo.toISOString())
+      // Buckets: Between 7 days ago and the start of Today (Discrete)
+      query = query
+        .gte('updated_at', sevenDaysAgo.toISOString())
+        .lt('updated_at', todayStart.toISOString())
+    } else if (filter === 'All Time') {
+      // Buckets: Everything older than 7 days (Discrete)
+      query = query.lt('updated_at', sevenDaysAgo.toISOString())
     }
-    // 'All Time' goes through without temporal filter
 
     const { data, error } = await query
 
@@ -48,6 +55,8 @@ export default function Dashboard() {
           const freshSelected = data.find(d => d.id === selectedCompany.id);
           if (freshSelected) setSelectedCompany(freshSelected);
         }
+      } else {
+        setSelectedCompany(null)
       }
     }
     setLoading(false)
@@ -75,13 +84,15 @@ export default function Dashboard() {
             padding: '2rem',
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden' // Container doesn't scroll, inner table does
+            overflow: 'hidden'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexShrink: 0 }}>
               <div>
                 <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Intelligence Feed</h1>
                 <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
-                  Signals updated {filter === 'Today' ? 'today' : filter === 'Last 7 Days' ? 'in the last 7 days' : 'all time'}
+                  {filter === 'Today' ? "New discoveries found in the last 24 hours." :
+                    filter === 'Last 7 Days' ? "Discoveries from earlier this week (excluding today)." :
+                      "Historical intelligence signals (prior to last 7 days)."}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '0.6rem' }}>
@@ -116,7 +127,7 @@ export default function Dashboard() {
               borderRadius: '0.75rem',
               boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
               border: '1px solid #e5e7eb',
-              overflowY: 'auto', // Important for scrollability
+              overflowY: 'auto',
               overflowX: 'hidden',
               position: 'relative'
             }}>
@@ -225,7 +236,9 @@ export default function Dashboard() {
                 </table>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '4rem', textAlign: 'center' }}>
-                  <p style={{ color: '#6b7280' }}>No intelligence signals updated {filter.toLowerCase()} found.</p>
+                  <p style={{ color: '#6b7280' }}>
+                    No intelligence signals found in the "{filter}" category.
+                  </p>
                 </div>
               )}
             </div>
