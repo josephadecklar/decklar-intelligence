@@ -26,11 +26,11 @@ function SearchResults() {
     const handleSearch = async (q: string) => {
         setLoading(true)
 
-        // Search in prospects (company_research)
-        const { data: prospects, error: pError } = await supabase
-            .from('company_research')
-            .select('id, company_name, score:lead_score, logo_url')
-            .ilike('company_name', `%${q}%`)
+        // Search in prospects via metadata join
+        const { data: metadata, error: pError } = await supabase
+            .from('research_metadata')
+            .select('logo_url, research_id, company_research!inner(id, company_name, lead_score)')
+            .ilike('company_research.company_name', `%${q}%`)
 
         // Search in customers (decklar_customers)
         const { data: customers, error: cError } = await supabase
@@ -41,11 +41,15 @@ function SearchResults() {
         if (pError) console.error('Prospect search error:', pError)
         if (cError) console.error('Customer search error:', cError)
 
-        const formattedProspects = (prospects || []).map(p => ({
-            ...p,
+        const formattedProspects = (metadata || []).map(m => ({
+            id: m.research_id,
+            company_name: m.company_research.company_name,
+            score: m.company_research.lead_score,
+            logo_url: m.logo_url,
             type: 'Prospect',
-            industry: 'Pharma / Logistics'
+            industry: 'Pharma / Logistics' // Meta-data for now
         }))
+
         const formattedCustomers = (customers || []).map(c => ({
             ...c,
             type: 'Customer'
@@ -161,7 +165,7 @@ function SearchResults() {
                                                 }}
                                             />
                                         ) : (
-                                            <Building2 size={24} />
+                                            <div style={{ fontWeight: 700, fontSize: '1.25rem' }}>{result.company_name.charAt(0)}</div>
                                         )}
                                     </div>
 

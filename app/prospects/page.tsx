@@ -54,11 +54,19 @@ const tdStyle: React.CSSProperties = {
 }
 
 export default async function ProspectsPage() {
-    const { data: prospects } = await supabase
-        .from('company_research')
-        .select('*')
+    // Querying from metadata to get prospect status
+    const { data: metadata } = await supabase
+        .from('research_metadata')
+        .select('*, company_research(*)')
         .eq('status', 'prospect')
-        .order('lead_score', { ascending: false })
+        .order('updated_at', { ascending: false })
+
+    const prospects = (metadata || []).map(m => ({
+        ...m.company_research,
+        logo_url: m.logo_url,
+        status: m.status,
+        updated_at: m.updated_at
+    })).filter(p => p.company_name)
 
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
@@ -67,7 +75,7 @@ export default async function ProspectsPage() {
             <div style={{ padding: '2rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
                     <p style={{ color: '#6b7280', margin: 0, fontSize: '0.875rem' }}>
-                        Showing {prospects?.length || 0} companies · Sorted by Lead Score
+                        Showing {prospects?.length || 0} companies · Sorted by Recent Activity
                     </p>
                 </div>
 

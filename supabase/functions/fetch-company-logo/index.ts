@@ -69,11 +69,14 @@ Deno.serve(async (req) => {
 
         console.log('Public URL:', publicUrl);
 
-        // 5. Update Table
+        // 5. Update Metadata Table
         const { error: updateError } = await supabase
-            .from('company_research')
-            .update({ logo_url: publicUrl })
-            .eq('id', companyId);
+            .from('research_metadata')
+            .update({
+                logo_url: publicUrl,
+                updated_at: new Date().toISOString()
+            })
+            .eq('research_id', companyId);
 
         if (updateError) {
             throw updateError;

@@ -47,14 +47,31 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
     const { name } = await params
     const companyName = decodeURIComponent(name)
 
-    const { data: prospect } = await supabase
-        .from('company_research')
-        .select('*')
-        .eq('company_name', companyName)
+    // Fetch from JOIN to get metadata (logo, etc)
+    const { data: metadata } = await supabase
+        .from('research_metadata')
+        .select('*, company_research!inner(*)')
+        .eq('company_research.company_name', companyName)
         .single()
 
-    if (!prospect) {
-        notFound()
+    if (!metadata) {
+        // Try direct fetch in case metadata trigger hasn't fired yet for some random reason
+        const { data: fallback } = await supabase
+            .from('company_research')
+            .select('*')
+            .eq('company_name', companyName)
+            .single()
+
+        if (!fallback) notFound()
+
+        // Use fallback if metadata missing
+        var prospect = fallback;
+        var logoUrl = null;
+        var updatedAt = fallback.updated_at || fallback.created_at;
+    } else {
+        var prospect = metadata.company_research;
+        var logoUrl = metadata.logo_url;
+        var updatedAt = metadata.updated_at;
     }
 
     const { data: notes } = await supabase
@@ -80,8 +97,26 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
 
                 {/* Header Card */}
                 <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.5rem', marginBottom: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                        <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                        <div style={{
+                            width: '80px',
+                            height: '80px',
+                            borderRadius: '12px',
+                            backgroundColor: logoUrl ? '#ffffff' : '#f3f4f6',
+                            border: logoUrl ? '1px solid #e5e7eb' : 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                            flexShrink: 0
+                        }}>
+                            {logoUrl ? (
+                                <img src={logoUrl} alt={prospect.company_name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '10px' }} />
+                            ) : (
+                                <span style={{ fontSize: '2rem', fontWeight: 800, color: '#9ca3af' }}>{prospect.company_name.charAt(0)}</span>
+                            )}
+                        </div>
+                        <div style={{ flex: 1 }}>
                             <h1 style={{ fontSize: '1.875rem', fontWeight: 800, color: '#111827', margin: '0 0 0.75rem' }}>{prospect.company_name}</h1>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -93,7 +128,7 @@ export default async function ProspectDetailPage({ params }: { params: Promise<{
                                     {getRecommendationLabel(prospect.lead_recommendation)}
                                 </span>
                                 <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
-                                    Last updated: {getTimeAgo(prospect.updated_at || prospect.created_at)}
+                                    Last updated: {getTimeAgo(updatedAt)}
                                 </span>
                             </div>
                         </div>

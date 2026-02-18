@@ -30,9 +30,12 @@ export default function NewsPanel({ companyData, onStatusUpdate }: NewsPanelProp
 
     const handleAddToProspects = async () => {
         const { error } = await supabase
-            .from('company_research')
-            .update({ status: 'prospect' })
-            .eq('id', companyData.id)
+            .from('research_metadata')
+            .update({
+                status: 'prospect',
+                updated_at: new Date().toISOString()
+            })
+            .eq('research_id', companyData.id)
 
         if (error) {
             console.error('Error adding to prospects:', error)

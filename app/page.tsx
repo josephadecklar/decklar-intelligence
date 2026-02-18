@@ -16,9 +16,11 @@ export default function Dashboard() {
 
   const fetchDiscoveries = async () => {
     setLoading(true)
+
+    // Querying through the metadata table which tracks our secondary state
     let query = supabase
-      .from('company_research')
-      .select('*')
+      .from('research_metadata')
+      .select('*, company_research(*)')
       .order('updated_at', { ascending: false })
 
     const now = new Date()
@@ -30,15 +32,12 @@ export default function Dashboard() {
     sevenDaysAgo.setHours(0, 0, 0, 0)
 
     if (filter === 'Today') {
-      // Buckets: Discrete Range for Today
       query = query.gte('updated_at', todayStart.toISOString())
     } else if (filter === 'Last 7 Days') {
-      // Buckets: Between 7 days ago and the start of Today (Discrete)
       query = query
         .gte('updated_at', sevenDaysAgo.toISOString())
         .lt('updated_at', todayStart.toISOString())
     } else if (filter === 'All Time') {
-      // Buckets: Everything older than 7 days (Discrete)
       query = query.lt('updated_at', sevenDaysAgo.toISOString())
     }
 
@@ -47,12 +46,22 @@ export default function Dashboard() {
     if (error) {
       console.error('Error fetching discoveries:', error)
     } else {
-      setDiscoveries(data || [])
-      if (data && data.length > 0) {
-        if (!selectedCompany || !data.find(d => d.id === selectedCompany.id)) {
-          setSelectedCompany(data[0])
+      // Flatten the joined data for the UI
+      const flattened = (data || []).map(m => ({
+        ...m.company_research,
+        logo_url: m.logo_url,
+        status: m.status,
+        updated_at: m.updated_at, // Use metadata's updated_at for feed sorting
+        id: m.research_id // Use the research ID for navigation/logic
+      })).filter(item => item.company_name); // Safety check
+
+      setDiscoveries(flattened)
+
+      if (flattened.length > 0) {
+        if (!selectedCompany || !flattened.find(d => d.id === selectedCompany.id)) {
+          setSelectedCompany(flattened[0])
         } else {
-          const freshSelected = data.find(d => d.id === selectedCompany.id);
+          const freshSelected = flattened.find(d => d.id === selectedCompany.id);
           if (freshSelected) setSelectedCompany(freshSelected);
         }
       } else {

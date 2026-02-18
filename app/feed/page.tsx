@@ -34,14 +34,15 @@ function getTierStyle(tier: string): React.CSSProperties {
 }
 
 export default async function NewsFeedPage() {
-    const { data: prospects } = await supabase
-        .from('company_research')
-        .select('company_name, lead_recommendation, summary_for_sales, updated_at, created_at')
+    // Fetch prospects via metadata
+    const { data: metadata } = await supabase
+        .from('research_metadata')
+        .select('*, company_research(*)')
         .order('updated_at', { ascending: false })
 
     const { data: customers } = await supabase
         .from('decklar_customers')
-        .select('company_name, account_tier, latest_news_summary, updated_at')
+        .select('company_name, account_tier, latest_news_summary, updated_at, logo_url')
         .order('updated_at', { ascending: false })
 
     type FeedItem = {
@@ -49,23 +50,26 @@ export default async function NewsFeedPage() {
         type: 'Prospect' | 'Customer'
         news_summary: string
         updated_at: string
+        logo_url: string | null
         lead_recommendation?: string
         account_tier?: string
     }
 
-    const prospectItems: FeedItem[] = prospects?.map(p => ({
-        company_name: p.company_name,
+    const prospectItems: FeedItem[] = (metadata || []).map(m => ({
+        company_name: m.company_research.company_name,
         type: 'Prospect' as const,
-        news_summary: p.summary_for_sales,
-        updated_at: p.updated_at || p.created_at,
-        lead_recommendation: p.lead_recommendation,
-    })) || []
+        news_summary: m.company_research.summary_for_sales,
+        updated_at: m.updated_at,
+        logo_url: m.logo_url,
+        lead_recommendation: m.company_research.lead_recommendation,
+    }))
 
     const customerItems: FeedItem[] = customers?.map(c => ({
         company_name: c.company_name,
         type: 'Customer' as const,
         news_summary: c.latest_news_summary,
         updated_at: c.updated_at,
+        logo_url: c.logo_url,
         account_tier: c.account_tier,
     })) || []
 
@@ -90,10 +94,25 @@ export default async function NewsFeedPage() {
                     {allItems.map((item, index) => (
                         <div key={`${item.type}-${item.company_name}-${index}`} style={{ backgroundColor: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ fontSize: '1.5rem' }}>
-                                        {item.type === 'Prospect' ? '🎯' : '🏢'}
-                                    </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '8px',
+                                        backgroundColor: item.logo_url ? '#ffffff' : '#f3f4f6',
+                                        border: item.logo_url ? '1px solid #e5e7eb' : 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        overflow: 'hidden',
+                                        flexShrink: 0
+                                    }}>
+                                        {item.logo_url ? (
+                                            <img src={item.logo_url} alt={item.company_name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }} />
+                                        ) : (
+                                            <span style={{ fontWeight: 800, color: '#9ca3af' }}>{item.company_name.charAt(0)}</span>
+                                        )}
+                                    </div>
                                     <div>
                                         <Link
                                             href={`/${item.type.toLowerCase()}s/${encodeURIComponent(item.company_name)}`}
