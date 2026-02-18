@@ -19,18 +19,21 @@ export default function Dashboard() {
     let query = supabase
       .from('company_research')
       .select('*')
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
+
+    const now = new Date()
 
     if (filter === 'Today') {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      query = query.gte('created_at', today.toISOString())
+      const todayStart = new Date(now)
+      todayStart.setHours(0, 0, 0, 0)
+      query = query.gte('updated_at', todayStart.toISOString())
     } else if (filter === 'Last 7 Days') {
-      const sevenDaysAgo = new Date()
+      const sevenDaysAgo = new Date(now)
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      query = query.gte('created_at', sevenDaysAgo.toISOString())
+      sevenDaysAgo.setHours(0, 0, 0, 0)
+      query = query.gte('updated_at', sevenDaysAgo.toISOString())
     }
-    // 'All Time' doesn't need a gte filter
+    // 'All Time' goes through without temporal filter
 
     const { data, error } = await query
 
@@ -38,12 +41,10 @@ export default function Dashboard() {
       console.error('Error fetching discoveries:', error)
     } else {
       setDiscoveries(data || [])
-      // If we have data and nothing is selected, or the selected one isn't in the new data, select first
       if (data && data.length > 0) {
         if (!selectedCompany || !data.find(d => d.id === selectedCompany.id)) {
           setSelectedCompany(data[0])
         } else {
-          // Update the selected company with fresh data (in case status changed)
           const freshSelected = data.find(d => d.id === selectedCompany.id);
           if (freshSelected) setSelectedCompany(freshSelected);
         }
@@ -72,15 +73,16 @@ export default function Dashboard() {
           <div style={{
             flex: 1,
             padding: '2rem',
-            overflowY: 'auto',
-            borderRight: '1px solid #e5e7eb',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            overflow: 'hidden' // Container doesn't scroll, inner table does
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexShrink: 0 }}>
               <div>
                 <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Intelligence Feed</h1>
-                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>Review new intelligence signals and promote them to prospects.</p>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
+                  Signals updated {filter === 'Today' ? 'today' : filter === 'Last 7 Days' ? 'in the last 7 days' : 'all time'}
+                </p>
               </div>
               <div style={{ display: 'flex', gap: '0.6rem' }}>
                 {['Today', 'Last 7 Days', 'All Time'].map((f) => (
@@ -107,20 +109,30 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {loading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-                <div style={{ width: '32px', height: '32px', border: '3px solid #f3f4f6', borderTop: '3px solid #111827', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-              </div>
-            ) : discoveries.length > 0 ? (
-              <div style={{
-                backgroundColor: 'white',
-                borderRadius: '0.75rem',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                border: '1px solid #e5e7eb',
-                overflow: 'hidden'
-              }}>
+            {/* Table Container - Scrollable */}
+            <div style={{
+              flex: 1,
+              backgroundColor: 'white',
+              borderRadius: '0.75rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              border: '1px solid #e5e7eb',
+              overflowY: 'auto', // Important for scrollability
+              overflowX: 'hidden',
+              position: 'relative'
+            }}>
+              {loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                  <div style={{ width: '32px', height: '32px', border: '3px solid #f3f4f6', borderTop: '3px solid #111827', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                </div>
+              ) : discoveries.length > 0 ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                  <thead style={{
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 10
+                  }}>
                     <tr>
                       <th style={thStyle}>Company</th>
                       <th style={thStyle}>Lead Score</th>
@@ -211,12 +223,12 @@ export default function Dashboard() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '4rem', backgroundColor: 'white', borderRadius: '1rem', border: '1px dashed #d1d5db' }}>
-                <p style={{ color: '#6b7280' }}>No intelligence discoveries found for this period.</p>
-              </div>
-            )}
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '4rem', textAlign: 'center' }}>
+                  <p style={{ color: '#6b7280' }}>No intelligence signals updated {filter.toLowerCase()} found.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Section: Discovery Intelligence Panel */}
@@ -225,7 +237,8 @@ export default function Dashboard() {
             backgroundColor: '#ffffff',
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            borderLeft: '1px solid #e5e7eb'
           }}>
             <NewsPanel companyData={selectedCompany} onStatusUpdate={handleStatusUpdate} />
           </div>
