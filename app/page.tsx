@@ -5,7 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
 import NewsPanel from '@/components/NewsPanel'
 import { supabase } from '@/lib/supabase'
-import { TrendingUp, Clock, Filter, Search, ArrowRight, Building2 } from 'lucide-react'
+import { TrendingUp, Clock, Filter, Search, ArrowRight, Building2, MapPin, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Dashboard() {
@@ -16,18 +16,37 @@ export default function Dashboard() {
 
   const fetchDiscoveries = async () => {
     setLoading(true)
-    const { data, error } = await supabase
+    let query = supabase
       .from('company_research')
       .select('*')
-      .eq('status', 'discovery')
       .order('created_at', { ascending: false })
+
+    if (filter === 'Today') {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      query = query.gte('created_at', today.toISOString())
+    } else if (filter === 'Last 7 Days') {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      query = query.gte('created_at', sevenDaysAgo.toISOString())
+    }
+    // 'All Time' doesn't need a gte filter
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Error fetching discoveries:', error)
     } else {
       setDiscoveries(data || [])
-      if (data && data.length > 0 && !selectedCompany) {
-        setSelectedCompany(data[0])
+      // If we have data and nothing is selected, or the selected one isn't in the new data, select first
+      if (data && data.length > 0) {
+        if (!selectedCompany || !data.find(d => d.id === selectedCompany.id)) {
+          setSelectedCompany(data[0])
+        } else {
+          // Update the selected company with fresh data (in case status changed)
+          const freshSelected = data.find(d => d.id === selectedCompany.id);
+          if (freshSelected) setSelectedCompany(freshSelected);
+        }
       }
     }
     setLoading(false)
@@ -35,13 +54,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDiscoveries()
-  }, [])
+  }, [filter])
 
   const handleStatusUpdate = () => {
-    // Refresh discoveries list
     fetchDiscoveries()
-    // Reset selection if the currently selected one was added to prospects
-    setSelectedCompany(null)
   }
 
   return (
@@ -63,24 +79,26 @@ export default function Dashboard() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
               <div>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Today's Intelligence Discovery</h1>
-                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>New intelligence signals detected in your territory today.</p>
+                <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Intelligence Feed</h1>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>Review new intelligence signals and promote them to prospects.</p>
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                {['Today', 'Last 7 Days'].map((f) => (
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                {['Today', 'Last 7 Days', 'All Time'].map((f) => (
                   <button
                     key={f}
                     onClick={() => setFilter(f)}
                     style={{
-                      padding: '0.5rem 1rem',
+                      padding: '0.5rem 0.85rem',
                       borderRadius: '0.5rem',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
                       backgroundColor: filter === f ? '#111827' : '#ffffff',
                       color: filter === f ? '#ffffff' : '#4b5563',
                       border: '1px solid #e5e7eb',
                       cursor: 'pointer',
-                      transition: 'all 0.2s'
+                      transition: 'all 0.2s',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.02em'
                     }}
                   >
                     {f}
@@ -107,7 +125,8 @@ export default function Dashboard() {
                       <th style={thStyle}>Company</th>
                       <th style={thStyle}>Lead Score</th>
                       <th style={thStyle}>Priority</th>
-                      <th style={thStyle}>Detected</th>
+                      <th style={thStyle}>Location</th>
+                      <th style={thStyle}>Status</th>
                       <th style={thStyle}></th>
                     </tr>
                   </thead>
@@ -149,7 +168,7 @@ export default function Dashboard() {
                           <span style={{
                             fontWeight: 800,
                             color: lead.lead_score >= 80 ? '#16a34a' : '#d97706',
-                            fontSize: '1rem'
+                            fontSize: '0.9rem'
                           }}>
                             {lead.lead_score}
                           </span>
@@ -158,9 +177,9 @@ export default function Dashboard() {
                           <span style={{
                             backgroundColor: lead.lead_recommendation?.toLowerCase().includes('high') ? '#dcfce7' : '#fef3c7',
                             color: lead.lead_recommendation?.toLowerCase().includes('high') ? '#166534' : '#92400e',
-                            padding: '0.2rem 0.6rem',
+                            padding: '0.15rem 0.5rem',
                             borderRadius: '9999px',
-                            fontSize: '0.7rem',
+                            fontSize: '0.65rem',
                             fontWeight: 700,
                             whiteSpace: 'nowrap'
                           }}>
@@ -168,7 +187,22 @@ export default function Dashboard() {
                           </span>
                         </td>
                         <td style={{ ...tdStyle, color: '#6b7280', fontSize: '0.8rem' }}>
-                          {new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <MapPin size={12} color="#9ca3af" />
+                            {lead.location || "USA"}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          {lead.status === 'prospect' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#16a34a', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                              <CheckCircle2 size={14} />
+                              Prospect
+                            </div>
+                          ) : (
+                            <div style={{ color: '#9ca3af', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase' }}>
+                              New Discovery
+                            </div>
+                          )}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>
                           <ArrowRight size={16} color={selectedCompany?.id === lead.id ? '#111827' : '#d1d5db'} />
@@ -180,7 +214,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '4rem', backgroundColor: 'white', borderRadius: '1rem', border: '1px dashed #d1d5db' }}>
-                <p style={{ color: '#6b7280' }}>No new intelligence discoveries detected for this period.</p>
+                <p style={{ color: '#6b7280' }}>No intelligence discoveries found for this period.</p>
               </div>
             )}
           </div>
@@ -209,16 +243,16 @@ export default function Dashboard() {
 }
 
 const thStyle: React.CSSProperties = {
-  padding: '0.75rem 1.25rem',
+  padding: '0.75rem 1rem',
   textAlign: 'left',
-  fontSize: '0.7rem',
-  fontWeight: 700,
-  color: '#6b7280',
+  fontSize: '0.65rem',
+  fontWeight: 800,
+  color: '#9ca3af',
   textTransform: 'uppercase',
   letterSpacing: '0.05em',
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '1rem 1.25rem',
+  padding: '0.875rem 1rem',
   borderTop: '1px solid #f3f4f6',
 }
