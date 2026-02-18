@@ -29,7 +29,7 @@ function SearchResults() {
         // Search in prospects via metadata join
         const { data: metadata, error: pError } = await supabase
             .from('research_metadata')
-            .select('logo_url, research_id, company_research!inner(id, company_name, lead_score)')
+            .select('logo_url, research_id, company_research!inner(id, company_name, lead_score, location)')
             .ilike('company_research.company_name', `%${q}%`)
 
         // Search in customers (decklar_customers)
@@ -41,18 +41,23 @@ function SearchResults() {
         if (pError) console.error('Prospect search error:', pError)
         if (cError) console.error('Customer search error:', cError)
 
-        const formattedProspects = (metadata || []).map(m => ({
-            id: m.research_id,
-            company_name: m.company_research.company_name,
-            score: m.company_research.lead_score,
-            logo_url: m.logo_url,
-            type: 'Prospect',
-            industry: 'Pharma / Logistics' // Meta-data for now
-        }))
+        const formattedProspects = (metadata || []).map(m => {
+            const research: any = Array.isArray(m.company_research) ? m.company_research[0] : m.company_research;
+            return {
+                id: m.research_id,
+                company_name: research?.company_name,
+                score: research?.lead_score,
+                logo_url: m.logo_url,
+                type: 'Prospect',
+                location: research?.location,
+                industry: 'Pharma / Logistics' // Meta-data for now
+            };
+        })
 
         const formattedCustomers = (customers || []).map(c => ({
             ...c,
-            type: 'Customer'
+            type: 'Customer',
+            location: 'USA' // Default for now
         }))
 
         const combined = [...formattedProspects, ...formattedCustomers]
@@ -186,7 +191,19 @@ function SearchResults() {
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#6b7280', fontSize: '0.875rem' }}>
                                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                <MapPin size={14} /> {result.industry}
+                                                <MapPin size={14} />
+                                                {(() => {
+                                                    const loc = result.location;
+                                                    if (!loc) return "USA";
+                                                    const parts = loc.split(',').map((p: string) => p.trim());
+                                                    const lastPart = parts[parts.length - 1];
+                                                    if (lastPart.length === 2 && lastPart === lastPart.toUpperCase()) return "USA";
+                                                    if (["US", "USA", "United States"].includes(lastPart)) return "USA";
+                                                    return lastPart;
+                                                })()}
+                                            </span>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                <Building2 size={14} /> {result.industry}
                                             </span>
                                             <span style={{ fontWeight: 600, color: '#111827' }}>
                                                 {result.type === 'Prospect' ? 'Lead Score' : 'Health Score'}: {result.score}

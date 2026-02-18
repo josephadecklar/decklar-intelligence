@@ -14,20 +14,6 @@ function getScoreDotColor(score: number): string {
     return '#9ca3af'
 }
 
-function getRecommendationLabel(recommendation: string): string {
-    const r = recommendation?.toLowerCase() || ''
-    if (r.includes('high')) return 'High Priority'
-    if (r.includes('medium') || r.includes('mid')) return 'Medium Priority'
-    return 'Low Priority'
-}
-
-function getRecommendationStyle(recommendation: string): React.CSSProperties {
-    const r = recommendation?.toLowerCase() || ''
-    if (r.includes('high')) return { backgroundColor: '#dcfce7', color: '#166534', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap' as const }
-    if (r.includes('medium') || r.includes('mid')) return { backgroundColor: '#fef3c7', color: '#92400e', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap' as const }
-    return { backgroundColor: '#f3f4f6', color: '#374151', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap' as const }
-}
-
 function getTimeAgo(date: string) {
     const now = new Date()
     const updated = new Date(date)
@@ -57,9 +43,9 @@ export default async function ProspectsPage() {
     // Querying from metadata to get prospect status
     const { data: metadata } = await supabase
         .from('research_metadata')
-        .select('*, company_research(*)')
+        .select('*, company_research!inner(*)')
         .eq('status', 'prospect')
-        .order('updated_at', { ascending: false })
+        .order('lead_score', { foreignTable: 'company_research', ascending: false })
 
     const prospects = (metadata || []).map(m => ({
         ...m.company_research,
@@ -75,7 +61,7 @@ export default async function ProspectsPage() {
             <div style={{ padding: '2rem' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
                     <p style={{ color: '#6b7280', margin: 0, fontSize: '0.875rem' }}>
-                        Showing {prospects?.length || 0} companies · Sorted by Recent Activity
+                        Showing {prospects?.length || 0} companies · Ranked by Lead Score (Highest First)
                     </p>
                 </div>
 
@@ -84,9 +70,10 @@ export default async function ProspectsPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                             <tr>
+                                <th style={thStyle}>#</th>
                                 <th style={thStyle}>Company</th>
                                 <th style={thStyle}>Lead Score</th>
-                                <th style={thStyle}>Priority</th>
+                                <th style={thStyle}>Location</th>
                                 <th style={thStyle}>Sales Hook</th>
                                 <th style={thStyle}>Last Updated</th>
                             </tr>
@@ -94,6 +81,9 @@ export default async function ProspectsPage() {
                         <tbody>
                             {prospects?.map((prospect, idx) => (
                                 <tr key={prospect.id}>
+                                    <td style={tdStyle}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af' }}>{idx + 1}</span>
+                                    </td>
                                     <td style={{ ...tdStyle, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                         <div style={{
                                             width: '32px',
@@ -135,12 +125,17 @@ export default async function ProspectsPage() {
                                             </span>
                                         </div>
                                     </td>
-                                    <td style={tdStyle}>
-                                        <span style={getRecommendationStyle(prospect.lead_recommendation)}>
-                                            {getRecommendationLabel(prospect.lead_recommendation)}
-                                        </span>
+                                    <td style={{ ...tdStyle, color: '#6b7280', fontSize: '0.8rem' }}>
+                                        {(() => {
+                                            if (!prospect.location) return "USA";
+                                            const parts = prospect.location.split(',').map((p: string) => p.trim());
+                                            const lastPart = parts[parts.length - 1];
+                                            if (lastPart.length === 2 && lastPart === lastPart.toUpperCase()) return "USA";
+                                            if (["US", "USA", "United States"].includes(lastPart)) return "USA";
+                                            return lastPart;
+                                        })()}
                                     </td>
-                                    <td style={{ ...tdStyle, maxWidth: '400px' }}>
+                                    <td style={{ ...tdStyle, maxWidth: '300px' }}>
                                         <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                                             {prospect.summary_for_sales}
                                         </p>

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { ExternalLink, FileText, TrendingUp, Target, Users, ShieldCheck, Zap, ArrowRight, UserPlus } from 'lucide-react'
+import { ExternalLink, FileText, TrendingUp, Target, Users, ShieldCheck, Zap, ArrowRight, UserPlus, BarChart3, AlertTriangle, Box, Laptop, Maximize, Lightbulb, Quote } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface NewsPanelProps {
@@ -46,7 +46,7 @@ export default function NewsPanel({ companyData, onStatusUpdate }: NewsPanelProp
     }
 
     return (
-        <div style={{ padding: '0', display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ padding: '0', display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#ffffff' }}>
             {/* Header */}
             <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb', backgroundColor: '#ffffff' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
@@ -75,11 +75,27 @@ export default function NewsPanel({ companyData, onStatusUpdate }: NewsPanelProp
                             companyData.company_name.charAt(0)
                         )}
                     </div>
-                    <div>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', margin: 0 }}>
-                            {companyData.company_name}
-                        </h2>
-                        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Discovery Intelligence</p>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', margin: 0 }}>
+                                {companyData.company_name}
+                            </h2>
+                            <span style={{
+                                backgroundColor: companyData.lead_score >= 80 ? '#dcfce7' : '#fef3c7',
+                                color: companyData.lead_score >= 80 ? '#166534' : '#92400e',
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                border: `1px solid ${companyData.lead_score >= 80 ? '#bbf7d0' : '#fde68a'}`,
+                                whiteSpace: 'nowrap'
+                            }}>
+                                {companyData.lead_score}
+                            </span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+                            {companyData.status === 'customer' ? 'Customer Intelligence' : 'Discovery Intelligence'}
+                        </p>
                     </div>
                 </div>
 
@@ -112,106 +128,132 @@ export default function NewsPanel({ companyData, onStatusUpdate }: NewsPanelProp
             </div>
 
             {/* Content Body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
 
-                {/* Score Summary */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '1rem',
-                    backgroundColor: '#f9fafb',
-                    padding: '1rem',
-                    borderRadius: '0.75rem',
-                    border: '1px solid #e5e7eb'
-                }}>
-                    <div>
-                        <div style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Lead Score</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: companyData.lead_score >= 80 ? '#16a34a' : '#d97706' }}>
-                            {companyData.lead_score}
-                        </div>
+                {/* Background & Overview - ALWAYS FIRST */}
+                <div style={cardStyle('#f8fafc', '#e2e8f0')}>
+                    <Header icon={<TrendingUp size={16} color="#0284c7" />} title="Business Overview" />
+                    <Text content={companyData.company_overview} />
+                </div>
+
+                {/* Financials */}
+                <div style={cardStyle('#f0fdf4', '#dcfce7')}>
+                    <Header icon={<BarChart3 size={16} color="#16a34a" />} title="Financial Profile" />
+                    <Text content={companyData.financial_profile || "Financial details currently being processed."} />
+                </div>
+
+                {/* Growth & Initiatives */}
+                <div style={cardStyle('#eff6ff', '#dbeafe')}>
+                    <Header icon={<Lightbulb size={16} color="#1e40af" />} title="Growth & Initiatives" />
+                    <Text content={companyData.growth_initiatives || "Tracking latest strategic moves..."} />
+                </div>
+
+                {/* Operational Scale */}
+                <div style={cardStyle('#fafafa', '#f3f4f6')}>
+                    <Header icon={<Maximize size={16} color="#4b5563" />} title="Operational Scale" />
+                    <Text content={companyData.operational_scale || "Calculating logistics footprint..."} />
+                </div>
+
+                {/* Supply Chain */}
+                <div style={cardStyle('#fff7ed', '#ffedd5')}>
+                    <Header icon={<Box size={16} color="#ea580c" />} title="Supply Chain Profile" />
+                    <Text content={companyData.supply_chain_profile || "Mapping global supply routes..."} />
+                </div>
+
+                {/* Tech & Logistics */}
+                <div style={cardStyle('#f5f3ff', '#ede9fe')}>
+                    <Header icon={<Laptop size={16} color="#7c3aed" />} title="Tech & Logistical Needs" />
+                    <Text content={companyData.technology_and_logistics_needs || "Analyzing technical stack..."} />
+                </div>
+
+                {/* Decision Makers */}
+                <div style={cardStyle('#ffffff', '#e5e7eb')}>
+                    <Header icon={<Users size={16} color="#0f172a" />} title="Decision Makers" />
+                    <Text content={companyData.decision_maker_roles} />
+                </div>
+
+                {/* Risks & Pains - Duo Column */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div style={cardStyle('#fef2f2', '#fee2e2')}>
+                        <Header icon={<AlertTriangle size={16} color="#dc2626" />} title="Risk Factors" />
+                        <Text content={companyData.risk_factors} size="0.8rem" />
                     </div>
-                    <div>
-                        <div style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Priority</div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#111827' }}>
-                            {companyData.lead_recommendation}
-                        </div>
+                    <div style={cardStyle('#fffbeb', '#fef3c7')}>
+                        <Header icon={<Target size={16} color="#d97706" />} title="Pain Points" />
+                        <Text content={companyData.visibility_pain_points} size="0.8rem" />
                     </div>
                 </div>
 
-                <section>
-                    <h3 style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <TrendingUp size={14} color="#0284c7" /> Company Overview
-                    </h3>
-                    <p style={{ fontSize: '0.875rem', color: '#4b5563', lineHeight: 1.6, margin: 0 }}>
-                        {companyData.company_overview}
-                    </p>
-                </section>
+                {/* Sales Strategy - NOW AT THE END & LIGHT STYLED */}
+                <div style={cardStyle('#fdf2f8', '#fbcfe8')}>
+                    <Header icon={<Quote size={16} color="#be185d" />} title="Sales Strategy & Intelligence" />
+                    <Text content={companyData.summary_for_sales || "Researching tailored sales hooks and engagement strategy..."} />
+                </div>
 
-                <section>
-                    <h3 style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <Zap size={14} color="#d97706" /> Sales Hook
-                    </h3>
-                    <div style={{ backgroundColor: '#fff7ed', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #fed7aa', fontSize: '0.875rem', color: '#9a3412', fontWeight: 500, lineHeight: 1.5 }}>
-                        {companyData.summary_for_sales}
-                    </div>
-                </section>
-
-                <section>
-                    <h3 style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <Target size={14} color="#dc2626" /> Pain Points & Needs
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
-                            <strong style={{ color: '#111827' }}>Visibility Pains:</strong> {companyData.visibility_pain_points}
-                        </div>
-                        <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
-                            <strong style={{ color: '#111827' }}>Tech Requirements:</strong> {companyData.technology_and_logistics_needs}
-                        </div>
-                    </div>
-                </section>
-
-                <section>
-                    <h3 style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <Users size={14} color="#16a34a" /> Decision Makers
-                    </h3>
-                    <p style={{ fontSize: '0.8125rem', color: '#4b5563', lineHeight: 1.6, margin: 0 }}>
-                        {companyData.decision_maker_roles}
-                    </p>
-                </section>
-
-                <section>
-                    <h3 style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <ShieldCheck size={14} color="#7c3aed" /> Risk Factors
-                    </h3>
-                    <p style={{ fontSize: '0.8125rem', color: '#4b5563', lineHeight: 1.6, margin: 0 }}>
-                        {companyData.risk_factors || "No significant risk factors identified."}
-                    </p>
-                </section>
-
-                <div style={{ marginTop: 'auto', paddingTop: '1.5rem' }}>
+                {/* Research Links Section */}
+                <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #f3f4f6' }}>
                     <h3 style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
-                        Research Links
+                        External Research Links
                     </h3>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        {['Website', 'LinkedIn', 'SEC Filings'].map((link) => (
-                            <button key={link} style={{
-                                padding: '0.4rem 0.75rem',
-                                backgroundColor: '#ffffff',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '0.4rem',
-                                fontSize: '0.75rem',
-                                color: '#4b5563',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.3rem'
-                            }}>
-                                {link} <ExternalLink size={12} />
-                            </button>
-                        ))}
+                        {companyData.website_link && (
+                            <ResearchLink href={companyData.website_link} label="Website" />
+                        )}
+                        {companyData.linkedin_link && (
+                            <ResearchLink href={companyData.linkedin_link} label="LinkedIn" />
+                        )}
+                        <ResearchLink href="#" label="SEC Filings" />
                     </div>
                 </div>
             </div>
         </div>
     )
 }
+
+// Sub-components for cleaner structure
+const Header = ({ icon, title, isDark = false }: { icon: React.ReactNode, title: string, isDark?: boolean }) => (
+    <h3 style={{ fontSize: '0.65rem', fontWeight: 800, color: isDark ? '#9ca3af' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        {icon} {title}
+    </h3>
+)
+
+const Text = ({ content, size = '0.85rem', isDark = false }: { content?: string, size?: string, isDark?: boolean }) => (
+    <p style={{ fontSize: size, color: isDark ? '#f8fafc' : '#475569', lineHeight: 1.5, margin: 0, fontWeight: 500 }}>
+        {content || "No detailed insights found for this section."}
+    </p>
+)
+
+const ResearchLink = ({ href, label }: { href: string, label: string }) => (
+    <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+            padding: '0.4rem 0.75rem',
+            backgroundColor: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '0.4rem',
+            fontSize: '0.75rem',
+            color: '#4b5563',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            textDecoration: 'none',
+            transition: 'all 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#111827'}
+        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e5e7eb'}
+    >
+        {label} <ExternalLink size={12} />
+    </a>
+)
+
+const cardStyle = (bg: string, border: string, isDark = false): React.CSSProperties => ({
+    backgroundColor: bg,
+    padding: '1.25rem',
+    borderRadius: '1rem',
+    border: isDark ? 'none' : `1px solid ${border}`,
+    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+    transition: 'all 0.2s ease'
+})

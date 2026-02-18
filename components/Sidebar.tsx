@@ -7,8 +7,6 @@ import { Home, Target, Building2, Newspaper } from 'lucide-react'
 const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Prospects', href: '/prospects', icon: Target },
-    { name: 'Customers', href: '/customers', icon: Building2 },
-    { name: 'News Feed', href: '/feed', icon: Newspaper },
 ]
 
 export default function Sidebar() {
@@ -32,16 +30,15 @@ export default function Sidebar() {
                 <div style={{
                     width: '32px',
                     height: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'linear-gradient(135deg, #0284c7, #0ea5e9)',
                     borderRadius: '8px',
-                    color: 'white',
-                    fontWeight: 800,
-                    fontSize: '1rem'
+                    overflow: 'hidden',
+                    flexShrink: 0
                 }}>
-                    D
+                    <img
+                        src="https://media.licdn.com/dms/image/v2/D4E0BAQE8mB-A7W396A/company-logo_200_200/company-logo_200_200/0/1726053366479/decklar_logo?e=1747872000&v=beta&t=UIsE5p6Y8zY9I0D1_xV7pW7YyV4pW6A7Z7W7J7y5wM0"
+                        alt="Decklar Logo"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
                 </div>
                 <div>
                     <h1 style={{ fontSize: '1.125rem', fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.02em' }}>DECKLAR</h1>
