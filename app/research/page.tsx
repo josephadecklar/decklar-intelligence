@@ -3,6 +3,15 @@
 import React, { useState, useEffect } from 'react'
 
 import TopBar from '@/components/TopBar'
+import {
+    getResearchQueue,
+    getDeepResearchData,
+    getCompanyNews,
+    checkProspectStatusAction,
+    updateResearchStatus,
+    removeFromResearch,
+    addToProspectsAction
+} from '@/app/actions/supabase'
 import { supabase } from '@/lib/supabase'
 import DeepResearchPanel from './DeepResearchPanel'
 import {
@@ -32,70 +41,14 @@ export default function ResearchPage() {
 
     const fetchResearchQueue = async () => {
         setLoading(true)
-
-        // Step 1: fetch the queue + lead data
-        const { data, error } = await supabase
-            .from('research_queue')
-            .select('*, decklar_leads_news(*)')
-            .order('added_at', { ascending: false })
-
-        if (!error && data) {
-            // Group by company name
-            const groupedMap: Record<string, any> = {}
-
-            data.forEach(item => {
-                const name = item.company_name
-                if (!groupedMap[name]) {
-                    groupedMap[name] = {
-                        ...item,
-                        all_news_ids: [item.decklar_leads_news?.id].filter(Boolean),
-                        composite_status: item.research_status
-                    }
-                } else {
-                    // Collect all news IDs for this company
-                    if (item.decklar_leads_news?.id) {
-                        groupedMap[name].all_news_ids.push(item.decklar_leads_news.id)
-                    }
-                    // If any entry is completed, mark composite as completed
-                    if (item.research_status === 'completed') {
-                        groupedMap[name].composite_status = 'completed'
-                    }
-                    // Keep most recent added_at
-                    if (new Date(item.added_at) > new Date(groupedMap[name].added_at)) {
-                        groupedMap[name].added_at = item.added_at
-                    }
-                }
-            })
-
-            const leadIds = Object.values(groupedMap)
-                .map(item => item.decklar_leads_news?.id)
-                .filter(Boolean)
-
-            let logoMap: Record<string, string> = {}
-            if (leadIds.length > 0) {
-                const { data: metaRows } = await supabase
-                    .from('leads_news_metadata')
-                    .select('lead_id, logo_url')
-                    .in('lead_id', leadIds)
-                if (metaRows) {
-                    metaRows.forEach((row: any) => {
-                        if (row.lead_id && row.logo_url) logoMap[row.lead_id] = row.logo_url
-                    })
-                }
-            }
-
-            const enriched = Object.values(groupedMap).map((item: any) => ({
-                ...item,
-                research_status: item.composite_status, // Use grouped status
-                lead_data: item.decklar_leads_news,
-                logo_url: item.decklar_leads_news?.id
-                    ? logoMap[item.decklar_leads_news.id] || null
-                    : null
-            }))
-
-            setResearchQueue(enriched)
+        try {
+            const data = await getResearchQueue()
+            setResearchQueue(data)
+        } catch (error) {
+            console.error('Error fetching research queue:', error)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     useEffect(() => { fetchResearchQueue() }, [])
@@ -135,62 +88,56 @@ export default function ResearchPage() {
 
         async function fetchDeepResearch() {
             setIsResearchLoading(true)
-            const { data, error } = await supabase
-                .from('company_deep_research')
-                .select('*')
-                .ilike('company_name', `%${selectedItem.company_name}%`)
-                .limit(1)
-
-            if (!error && data && data.length > 0) {
-                setHasResearchData(true)
-                setDeepResearchData(data[0])
-                // Auto-mark as completed in research_queue if not already
-                if (selectedItem?.research_status !== 'completed') {
-                    await supabase
-                        .from('research_queue')
-                        .update({ research_status: 'completed' })
-                        .eq('id', selectedItem.id)
-                    // Update local state immediately so badge refreshes
-                    setResearchQueue(prev => prev.map(q =>
-                        q.id === selectedItem.id ? { ...q, research_status: 'completed' } : q
-                    ))
-                    setSelectedItem((prev: any) => ({ ...prev, research_status: 'completed' }))
+            try {
+                const data = await getDeepResearchData(selectedItem.company_name)
+                if (data) {
+                    setHasResearchData(true)
+                    setDeepResearchData(data)
+                    // Auto-mark as completed in research_queue if not already
+                    if (selectedItem?.research_status !== 'completed' && selectedItem.id) {
+                        await updateResearchStatus(selectedItem.id, 'completed')
+                        // Update local state immediately so badge refreshes
+                        setResearchQueue(prev => prev.map(q =>
+                            q.id === selectedItem.id ? { ...q, research_status: 'completed' } : q
+                        ))
+                        setSelectedItem((prev: any) => ({ ...prev, research_status: 'completed' }))
+                    }
+                } else {
+                    setHasResearchData(false)
+                    setDeepResearchData(null)
                 }
-            } else {
-                setHasResearchData(false)
-                setDeepResearchData(null)
+            } catch (error) {
+                console.error('Error fetching deep research:', error)
+            } finally {
+                setIsResearchLoading(false)
             }
-            setIsResearchLoading(false)
         }
 
         fetchDeepResearch()
 
         // Fetch all news for this company
-        async function fetchCompanyNews() {
+        async function fetchCompanyNewsBatch() {
             if (!selectedItem?.company_name) return
-            const { data, error } = await supabase
-                .from('decklar_leads_news')
-                .select('*')
-                .eq('company_name', selectedItem.company_name)
-                .order('created_at', { ascending: false })
-
-            if (!error && data) {
+            try {
+                const data = await getCompanyNews(selectedItem.company_name)
                 setCompanyNews(data)
+            } catch (error) {
+                console.error('Error fetching company news:', error)
             }
         }
-        fetchCompanyNews()
+        fetchCompanyNewsBatch()
 
         // Check if already a prospect
-        async function checkProspectStatus() {
+        async function checkProspectStatusBatch() {
             if (!selectedItem?.company_name) return
-            const { data } = await supabase
-                .from('decklar_prospects')
-                .select('id')
-                .eq('company_name', selectedItem.company_name)
-                .single()
-            setIsProspect(!!data)
+            try {
+                const isP = await checkProspectStatusAction(selectedItem.company_name)
+                setIsProspect(isP)
+            } catch (error) {
+                console.error('Error checking prospect status:', error)
+            }
         }
-        checkProspectStatus()
+        checkProspectStatusBatch()
     }, [selectedItem])
 
     // Reinitialise the Flowise chat bubble whenever the selected company changes
@@ -248,16 +195,18 @@ export default function ResearchPage() {
 
 
     const handleRemoveFromResearch = async (item: any) => {
+        if (!item.id) return
         setDeletingId(item.id)
         try {
-            const { error } = await supabase.from('research_queue').delete().eq('id', item.id)
-            if (!error) {
-                const updated = researchQueue.filter(r => r.id !== item.id)
-                setResearchQueue(updated)
-                if (selectedItem?.id === item.id) setSelectedItem(updated[0] ?? null)
-            }
-        } catch (e) { console.error(e) }
-        setDeletingId(null)
+            await removeFromResearch(item.id)
+            const updated = researchQueue.filter(r => r.id !== item.id)
+            setResearchQueue(updated)
+            if (selectedItem?.id === item.id) setSelectedItem(updated[0] ?? null)
+        } catch (e) {
+            console.error(e)
+        } finally {
+            setDeletingId(null)
+        }
     }
 
     const filteredQueue = researchQueue.filter(item => {
@@ -275,26 +224,13 @@ export default function ResearchPage() {
         if (!selectedItem || isProspect || isAddingProspect) return
         setIsAddingProspect(true)
         try {
-            const { error } = await supabase
-                .from('decklar_prospects')
-                .insert([{
-                    company_name: selectedItem.company_name,
-                    logo_url: selectedItem.logo_url,
-                    metadata: {
-                        source: 'research_page',
-                        added_at: new Date().toISOString()
-                    }
-                }])
-
-            if (!error) {
-                setIsProspect(true)
-            } else {
-                console.error('Error adding to prospects:', error)
-            }
+            await addToProspectsAction(selectedItem.company_name, selectedItem.logo_url)
+            setIsProspect(true)
         } catch (e) {
             console.error(e)
+        } finally {
+            setIsAddingProspect(false)
         }
-        setIsAddingProspect(false)
     }
 
     return (

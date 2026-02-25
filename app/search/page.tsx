@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import TopBar from '@/components/TopBar'
 import Link from 'next/link'
 import { Search, Building2, MapPin, ArrowRight } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { searchCompanies } from '@/app/actions/supabase'
 
 function SearchResults() {
     const searchParams = useSearchParams()
@@ -25,44 +25,14 @@ function SearchResults() {
 
     const handleSearch = async (q: string) => {
         setLoading(true)
-
-        // Search in prospects via metadata join
-        const { data: metadata, error: pError } = await supabase
-            .from('research_metadata')
-            .select('logo_url, research_id, company_research!inner(id, company_name, lead_score, location)')
-            .ilike('company_research.company_name', `%${q}%`)
-
-        // Search in customers (decklar_customers)
-        const { data: customers, error: cError } = await supabase
-            .from('decklar_customers')
-            .select('id, company_name, industry, score:health_score, logo_url')
-            .ilike('company_name', `%${q}%`)
-
-        if (pError) console.error('Prospect search error:', pError)
-        if (cError) console.error('Customer search error:', cError)
-
-        const formattedProspects = (metadata || []).map(m => {
-            const research: any = Array.isArray(m.company_research) ? m.company_research[0] : m.company_research;
-            return {
-                id: m.research_id,
-                company_name: research?.company_name,
-                score: research?.lead_score,
-                logo_url: m.logo_url,
-                type: 'Prospect',
-                location: research?.location,
-                industry: 'Pharma / Logistics' // Meta-data for now
-            };
-        })
-
-        const formattedCustomers = (customers || []).map(c => ({
-            ...c,
-            type: 'Customer',
-            location: 'USA' // Default for now
-        }))
-
-        const combined = [...formattedProspects, ...formattedCustomers]
-        setResults(combined)
-        setLoading(false)
+        try {
+            const combined = await searchCompanies(q)
+            setResults(combined)
+        } catch (error) {
+            console.error('Search error:', error)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleSubmit = (e: React.FormEvent) => {

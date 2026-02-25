@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import TopBar from '@/components/TopBar'
+import { getProspects, getDeepResearchData } from '@/app/actions/supabase'
 import { supabase } from '@/lib/supabase'
 import {
     Search, UserPlus, Clock, FileText, ChevronRight,
@@ -23,18 +24,17 @@ export default function ProspectsPage() {
 
     const fetchProspects = async () => {
         setLoading(true)
-        const { data, error } = await supabase
-            .from('decklar_prospects')
-            .select('*')
-            .order('created_at', { ascending: false })
-
-        if (!error && data) {
+        try {
+            const data = await getProspects()
             setProspects(data)
             if (data.length > 0 && !selectedProspect) {
                 setSelectedProspect(data[0])
             }
+        } catch (error) {
+            console.error('Error fetching prospects:', error)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     useEffect(() => {
@@ -47,23 +47,20 @@ export default function ProspectsPage() {
             return
         }
 
-        async function fetchDeepResearch() {
+        async function fetchDeepResearchBatch() {
             setIsResearchLoading(true)
-            const { data, error } = await supabase
-                .from('company_deep_research')
-                .select('*')
-                .ilike('company_name', `%${selectedProspect.company_name}%`)
-                .limit(1)
-
-            if (!error && data && data.length > 0) {
-                setDeepResearch(data[0])
-            } else {
+            try {
+                const data = await getDeepResearchData(selectedProspect.company_name)
+                setDeepResearch(data)
+            } catch (error) {
+                console.error('Error fetching deep research:', error)
                 setDeepResearch(null)
+            } finally {
+                setIsResearchLoading(false)
             }
-            setIsResearchLoading(false)
         }
 
-        fetchDeepResearch()
+        fetchDeepResearchBatch()
     }, [selectedProspect])
 
     const filteredProspects = prospects.filter(p =>
