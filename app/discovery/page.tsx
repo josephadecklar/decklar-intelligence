@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import TopBar from '@/components/TopBar'
 import DiscoveryPanel from '@/components/DiscoveryPanel'
-import { supabase } from '@/lib/supabase'
+import { getDiscoveryLeads } from '@/app/actions/supabase'
+import { supabase } from '@/lib/supabase' // Keep for direct updates if needed, though we should move those to actions too
 import { Newspaper, Search, Building2, MapPin, ExternalLink, Plus, Linkedin, Lightbulb, Globe, CheckCircle2 } from 'lucide-react'
 
 export default function DiscoveryPage() {
@@ -16,53 +17,17 @@ export default function DiscoveryPage() {
 
     const fetchNewsLeads = async () => {
         setLoading(true)
-
-        const now = new Date()
-        const todayStart = new Date(now)
-        todayStart.setHours(0, 0, 0, 0)
-
-        const sevenDaysAgo = new Date(now)
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-        sevenDaysAgo.setHours(0, 0, 0, 0)
-
-        let query = supabase
-            .from('decklar_leads_news')
-            .select('*, leads_news_metadata(logo_url, status)')
-            .order('created_at', { ascending: false })
-
-        if (filter === 'Today') {
-            query = query.gte('created_at', todayStart.toISOString())
-        } else if (filter === 'Last 7 Days') {
-            query = query
-                .gte('created_at', sevenDaysAgo.toISOString())
-                .lt('created_at', todayStart.toISOString())
-        } else if (filter === 'All Time') {
-            query = query.lt('created_at', sevenDaysAgo.toISOString())
-        }
-
-        const { data, error } = await query
-
-        if (error) {
-            console.error('Error fetching news leads:', error)
-        } else {
-            // Flatten metadata into each lead
-            const enrichedData = (data || []).map(lead => {
-                const meta = Array.isArray(lead.leads_news_metadata)
-                    ? lead.leads_news_metadata[0]
-                    : lead.leads_news_metadata;
-                return {
-                    ...lead,
-                    logo_url: meta?.logo_url || lead.logo_url || null,
-                    lead_status: meta?.status || 'discovery',
-                    added_to_research: meta?.status === 'research' || meta?.status === 'prospect' || lead.added_to_research
-                }
-            })
-            setNewsLeads(enrichedData)
-            if (enrichedData.length > 0 && !selectedLead) {
-                setSelectedLead(enrichedData[0])
+        try {
+            const data = await getDiscoveryLeads(filter)
+            setNewsLeads(data)
+            if (data.length > 0 && !selectedLead) {
+                setSelectedLead(data[0])
             }
+        } catch (error) {
+            console.error('Error fetching news leads:', error)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     useEffect(() => {

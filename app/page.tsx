@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
-import { supabase } from '@/lib/supabase'
+import { getDashboardData } from '@/app/actions/supabase'
 import {
   Building2, Search, TrendingUp, Zap,
   ArrowRight, ChevronUp, ChevronDown, Users,
@@ -180,28 +180,26 @@ export default function Dashboard() {
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = async () => {
     setLoading(true)
+    try {
+      const data = await getDashboardData()
 
-    const [ecRes, dlnRes, cdrRes, pRes] = await Promise.all([
-      supabase.from('existing_customers').select('id, company_name, logo_url, created_at').order('company_name'),
-      supabase.from('decklar_leads_news').select('id, company_name, industry, headquarters, news_headline, news_og_image, signal_type, leads_news_metadata(logo_url, status)').order('company_name'),
-      supabase.from('company_deep_research').select('id, company_name, location, lead_score, lead_recommendation, outreach_angle, summary_for_sales, logo_url, created_at').order('lead_score', { ascending: false }),
-      supabase.from('decklar_prospects').select('id, company_name, logo_url, created_at').order('created_at', { ascending: false }),
-    ])
+      setCustomers(data.customers)
 
-    if (!ecRes.error) setCustomers(ecRes.data || [])
-    if (!dlnRes.error) {
-      const filtered = (dlnRes.data || [])
+      const filteredDiscoveries = data.discoveries
         .map((row: any) => {
           const meta = Array.isArray(row.leads_news_metadata) ? row.leads_news_metadata[0] : row.leads_news_metadata
           return { ...row, logo_url: meta?.logo_url || null, status: meta?.status || null }
         })
         .filter((row: any) => row.status === 'discovery')
-      setDiscoveries(filtered)
-    }
-    if (!cdrRes.error) setResearched(cdrRes.data || [])
-    if (!pRes.error) setProspects(pRes.data || [])
+      setDiscoveries(filteredDiscoveries)
 
-    setLoading(false)
+      setResearched(data.researched)
+      setProspects(data.prospects)
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchAll() }, [])
