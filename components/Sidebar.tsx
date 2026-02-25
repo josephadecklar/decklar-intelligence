@@ -6,6 +6,8 @@ import { Home, Target, Building2, Newspaper } from 'lucide-react'
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
+    { name: 'Discovery', href: '/discovery', icon: Newspaper },
+    { name: 'Research', href: '/research', icon: Building2 },
     { name: 'Prospects', href: '/prospects', icon: Target },
 ]
 
@@ -35,7 +37,7 @@ export default function Sidebar() {
                     flexShrink: 0
                 }}>
                     <img
-                        src="https://media.licdn.com/dms/image/v2/D4E0BAQE8mB-A7W396A/company-logo_200_200/company-logo_200_200/0/1726053366479/decklar_logo?e=1747872000&v=beta&t=UIsE5p6Y8zY9I0D1_xV7pW7YyV4pW6A7Z7W7J7y5wM0"
+                        src="https://media.licdn.com/dms/image/v2/D4D0BAQHXr_huR6gBEg/company-logo_200_200/B4DZkztYtoIEAM-/0/1757509160635/decklar_logo?e=2147483647&v=beta&t=9rz4H-hvn7Qd--FftGyL72e-RixqxORUoLCuRKTLAQA"
                         alt="Decklar Logo"
                         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     />
@@ -85,29 +87,6 @@ export default function Sidebar() {
                 })}
             </nav>
 
-            {/* User Profile */}
-            <div style={{ padding: '1.25rem', borderTop: '1px solid #f3f4f6' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        backgroundColor: '#f3f4f6',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: '#4b5563'
-                    }}>
-                        JA
-                    </div>
-                    <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#111827', margin: 0 }}>Joseph Alias</p>
-                        <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: 0 }}>Sales Representative</p>
-                    </div>
-                </div>
-            </div>
         </div>
     )
 }

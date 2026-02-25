@@ -1,509 +1,694 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
-import NewsPanel from '@/components/NewsPanel'
 import { supabase } from '@/lib/supabase'
-import { TrendingUp, Clock, Filter, Search, ArrowRight, Building2, MapPin, CheckCircle2, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import {
+  Building2, Search, TrendingUp, Zap,
+  ArrowRight, ChevronUp, ChevronDown, Users,
+  Newspaper, CheckCircle2, Star, Target
+} from 'lucide-react'
 import Link from 'next/link'
 
-export default function Dashboard() {
-  const [discoveries, setDiscoveries] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedCompany, setSelectedCompany] = useState<any>(null)
-  const [filter, setFilter] = useState('Today')
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface ExistingCustomer {
+  id: string
+  company_name: string
+  logo_url: string | null
+  created_at: string
+}
 
-  // Column Filters state
-  const [nameFilter, setNameFilter] = useState('')
-  const [scoreFilter, setScoreFilter] = useState('All')
-  const [locationFilter, setLocationFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+interface DiscoveryCompany {
+  id: string
+  company_name: string
+  industry: string | null
+  headquarters: string | null
+  news_headline: string | null
+  news_og_image: string | null
+  signal_type: string | null
+  logo_url: string | null
+  status: string | null
+}
 
-  // Expanded rows for news
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+interface ResearchedCompany {
+  id: string
+  company_name: string
+  location: string | null
+  lead_score: number | null
+  lead_recommendation: string | null
+  outreach_angle: string | null
+  summary_for_sales: string | null
+  logo_url: string | null
+  created_at: string
+}
 
-  const toggleRow = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    const newExpanded = new Set(expandedRows)
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id)
-    } else {
-      newExpanded.add(id)
-    }
-    setExpandedRows(newExpanded)
+interface Prospect {
+  id: string
+  company_name: string
+  logo_url: string | null
+  created_at: string
+}
+
+type TabKey = 'customers' | 'discovery' | 'researched' | 'prospects'
+
+// ─── Recommendation Badge ──────────────────────────────────────────────────────
+function RecoBadge({ value }: { value: string | null }) {
+  if (!value) return null
+  const map: Record<string, { color: string; bg: string; border: string }> = {
+    'High Priority': { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+    'Medium Priority': { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    'Low Priority': { color: '#0369a1', bg: '#eff6ff', border: '#bfdbfe' },
+    'Avoid': { color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
   }
+  const s = map[value] || { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' }
+  return (
+    <span style={{
+      padding: '0.2rem 0.55rem', borderRadius: '2rem',
+      backgroundColor: s.bg, color: s.color, border: `1px solid ${s.border}`,
+      fontSize: '0.65rem', fontWeight: 700, whiteSpace: 'nowrap'
+    }}>{value}</span>
+  )
+}
 
-  const fetchDiscoveries = async () => {
+// ─── Score Ring ────────────────────────────────────────────────────────────────
+function ScoreRing({ score }: { score: number }) {
+  const color = score >= 70 ? '#7c3aed' : score >= 50 ? '#d97706' : '#6b7280'
+  return (
+    <div title={`Lead Score: ${score}`} style={{
+      width: '40px', height: '40px', borderRadius: '50%',
+      background: `conic-gradient(${color} ${score * 3.6}deg, #f3f4f6 0deg)`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+    }}>
+      <div style={{
+        width: '28px', height: '28px', borderRadius: '50%',
+        backgroundColor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }}>
+        <span style={{ fontSize: '0.58rem', fontWeight: 900, color: '#111827' }}>{score}</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Avatar Initial ────────────────────────────────────────────────────────────
+function CompanyAvatar({ name, logoUrl, color = '#7c3aed' }: { name: string; logoUrl?: string | null; color?: string }) {
+  if (logoUrl) {
+    return (
+      <div style={{
+        width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden',
+        border: '1px solid #e5e7eb', flexShrink: 0, backgroundColor: 'white'
+      }}>
+        <img src={logoUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '3px' }} />
+      </div>
+    )
+  }
+  return (
+    <div style={{
+      width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+      background: `linear-gradient(135deg, ${color}22, ${color}55)`,
+      border: `1px solid ${color}44`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <span style={{ fontSize: '0.75rem', fontWeight: 900, color }}>{(name || '?').charAt(0).toUpperCase()}</span>
+    </div>
+  )
+}
+
+// ─── Sort Hook ─────────────────────────────────────────────────────────────────
+function SortBtn({ field, active, dir, onClick }: { field: string; active: boolean; dir: 'asc' | 'desc'; onClick: () => void }) {
+  return (
+    <span onClick={onClick} style={{ cursor: 'pointer', display: 'inline-flex', flexDirection: 'column', gap: '1px', marginLeft: '4px', opacity: active ? 1 : 0.3 }}>
+      <ChevronUp size={8} color={active && dir === 'asc' ? '#111827' : '#9ca3af'} />
+      <ChevronDown size={8} color={active && dir === 'desc' ? '#111827' : '#9ca3af'} />
+    </span>
+  )
+}
+
+// ─── Search Input ──────────────────────────────────────────────────────────────
+function SearchInput({ value, onChange, placeholder = 'Search...' }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+      <Search size={13} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%', paddingLeft: '2rem', paddingRight: '0.75rem',
+          paddingTop: '0.5rem', paddingBottom: '0.5rem',
+          fontSize: '0.8rem', borderRadius: '0.5rem',
+          border: '1px solid #e5e7eb', backgroundColor: '#f9fafb',
+          color: '#111827', fontWeight: 500, outline: 'none', boxSizing: 'border-box'
+        }}
+      />
+    </div>
+  )
+}
+
+// ─── Empty State ───────────────────────────────────────────────────────────────
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#9ca3af' }}>
+      <Building2 size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+      <p style={{ fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>{message}</p>
+    </div>
+  )
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState<TabKey>('discovery')
+
+  // Data states
+  const [customers, setCustomers] = useState<ExistingCustomer[]>([])
+  const [discoveries, setDiscoveries] = useState<DiscoveryCompany[]>([])
+  const [researched, setResearched] = useState<ResearchedCompany[]>([])
+  const [prospects, setProspects] = useState<Prospect[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Search states per tab
+  const [custSearch, setCustSearch] = useState('')
+  const [discSearch, setDiscSearch] = useState('')
+  const [resSearch, setResSearch] = useState('')
+  const [prospSearch, setProspSearch] = useState('')
+
+  // Sort state
+  const [sortField, setSortField] = useState('company_name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const fetchAll = async () => {
     setLoading(true)
 
-    const now = new Date()
-    const todayStart = new Date(now)
-    todayStart.setHours(0, 0, 0, 0)
-
-    const sevenDaysAgo = new Date(now)
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    sevenDaysAgo.setHours(0, 0, 0, 0)
-
-    // Discoveries/Prospects query
-    let discoveryQuery = supabase
-      .from('research_metadata')
-      .select('*, company_research!inner(*)')
-
-    // Customers query
-    let customerQuery = supabase
-      .from('decklar_customers')
-      .select('*')
-
-    if (filter === 'Today') {
-      discoveryQuery = discoveryQuery.gte('updated_at', todayStart.toISOString())
-      customerQuery = customerQuery.gte('updated_at', todayStart.toISOString())
-    } else if (filter === 'Last 7 Days') {
-      discoveryQuery = discoveryQuery
-        .gte('updated_at', sevenDaysAgo.toISOString())
-        .lt('updated_at', todayStart.toISOString())
-      customerQuery = customerQuery
-        .gte('updated_at', sevenDaysAgo.toISOString())
-        .lt('updated_at', todayStart.toISOString())
-    } else if (filter === 'All Time') {
-      discoveryQuery = discoveryQuery.lt('updated_at', sevenDaysAgo.toISOString())
-      customerQuery = customerQuery.lt('updated_at', sevenDaysAgo.toISOString())
-    }
-
-    const [discoveryRes, customerRes] = await Promise.all([
-      discoveryQuery,
-      customerQuery
+    const [ecRes, dlnRes, cdrRes, pRes] = await Promise.all([
+      supabase.from('existing_customers').select('id, company_name, logo_url, created_at').order('company_name'),
+      supabase.from('decklar_leads_news').select('id, company_name, industry, headquarters, news_headline, news_og_image, signal_type, leads_news_metadata(logo_url, status)').order('company_name'),
+      supabase.from('company_deep_research').select('id, company_name, location, lead_score, lead_recommendation, outreach_angle, summary_for_sales, logo_url, created_at').order('lead_score', { ascending: false }),
+      supabase.from('decklar_prospects').select('id, company_name, logo_url, created_at').order('created_at', { ascending: false }),
     ])
 
-    if (discoveryRes.error || customerRes.error) {
-      console.error('Error fetching dashboard data:', discoveryRes.error || customerRes.error)
-    } else {
-      const discoveriesData = discoveryRes.data || []
-      const customersData = customerRes.data || []
-
-      const flattenedDiscoveries = discoveriesData.map(m => ({
-        ...m.company_research,
-        logo_url: m.logo_url,
-        status: m.status,
-        updated_at: m.updated_at,
-        id: m.research_id
-      }))
-
-      const flattenedCustomers = customersData.map(c => ({
-        ...c,
-        lead_score: c.health_score, // Map health_score to lead_score for ranking
-        status: 'customer',
-        summary_for_sales: c.latest_news_summary,
-        location: 'USA', // Default for customers since column is missing
-        id: `cust-${c.id}`
-      }))
-
-      const flattened = [...flattenedDiscoveries, ...flattenedCustomers]
-        .filter(item => item.company_name)
-        .sort((a, b) => (b.lead_score || 0) - (a.lead_score || 0));
-
-      setDiscoveries(flattened)
-
-      if (flattened.length > 0) {
-        if (!selectedCompany || !flattened.find(d => d.id === selectedCompany.id)) {
-          setSelectedCompany(flattened[0])
-        } else {
-          const freshSelected = flattened.find(d => d.id === selectedCompany.id);
-          if (freshSelected) setSelectedCompany(freshSelected);
-        }
-      } else {
-        setSelectedCompany(null)
-      }
+    if (!ecRes.error) setCustomers(ecRes.data || [])
+    if (!dlnRes.error) {
+      const filtered = (dlnRes.data || [])
+        .map((row: any) => {
+          const meta = Array.isArray(row.leads_news_metadata) ? row.leads_news_metadata[0] : row.leads_news_metadata
+          return { ...row, logo_url: meta?.logo_url || null, status: meta?.status || null }
+        })
+        .filter((row: any) => row.status === 'discovery')
+      setDiscoveries(filtered)
     }
+    if (!cdrRes.error) setResearched(cdrRes.data || [])
+    if (!pRes.error) setProspects(pRes.data || [])
+
     setLoading(false)
   }
 
-  const filteredDiscoveries = React.useMemo(() => {
-    return discoveries.filter(lead => {
-      // Name filter
-      if (nameFilter && !lead.company_name?.toLowerCase().includes(nameFilter.toLowerCase())) return false;
+  useEffect(() => { fetchAll() }, [])
 
-      // Score filter
-      if (scoreFilter !== 'All') {
-        const score = lead.lead_score || 0;
-        if (scoreFilter === 'High (80+)' && score < 80) return false;
-        if (scoreFilter === 'Medium (60-79)' && (score < 60 || score >= 80)) return false;
-        if (scoreFilter === 'Low (<60)' && score >= 60) return false;
-      }
-
-      // Location filter
-      if (locationFilter) {
-        const loc = lead.location || 'USA'; // Consistency with display logic
-        const country = (() => {
-          const parts = loc.split(',').map((p: string) => p.trim());
-          const lastPart = parts[parts.length - 1];
-          if (lastPart.length === 2 && lastPart === lastPart.toUpperCase()) return "USA";
-          if (["US", "USA", "United States"].includes(lastPart)) return "USA";
-          return lastPart;
-        })();
-        if (!country.toLowerCase().includes(locationFilter.toLowerCase())) return false;
-      }
-
-      // Status filter
-      if (statusFilter !== 'All') {
-        if (statusFilter.toLowerCase() !== lead.status?.toLowerCase()) return false;
-      }
-
-      return true;
-    });
-  }, [discoveries, nameFilter, scoreFilter, locationFilter, statusFilter]);
-
-  useEffect(() => {
-    fetchDiscoveries()
-  }, [filter])
-
-  useEffect(() => {
-    // Sync selected company if current selection is filtered out
-    if (filteredDiscoveries.length > 0) {
-      const isSelectedVisible = selectedCompany && filteredDiscoveries.find(d => d.id === selectedCompany.id);
-      if (!isSelectedVisible) {
-        setSelectedCompany(filteredDiscoveries[0]);
-      }
-    } else {
-      setSelectedCompany(null);
-    }
-  }, [filteredDiscoveries, selectedCompany]);
-
-  const filterInputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '0.4rem 0.6rem',
-    fontSize: '0.75rem',
-    borderRadius: '0.375rem',
-    border: '1px solid #e5e7eb',
-    backgroundColor: 'white',
-    color: '#374151',
-    marginTop: '0.4rem',
-    fontWeight: 500
+  // ── Sort helper ────────────────────────────────────────────────────────────
+  const toggleSort = (field: string) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
   }
 
-  const handleStatusUpdate = () => {
-    fetchDiscoveries()
+  const sortRows = <T extends Record<string, any>>(rows: T[], field: string): T[] =>
+    [...rows].sort((a, b) => {
+      const av = a[field] ?? ''
+      const bv = b[field] ?? ''
+      if (typeof av === 'number') return sortDir === 'asc' ? av - bv : bv - av
+      return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
+    })
+
+  // ── Filtered + sorted lists ────────────────────────────────────────────────
+  const filteredCustomers = useMemo(() => sortRows(
+    customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())),
+    'company_name'
+  ), [customers, custSearch, sortField, sortDir])
+
+  const filteredDiscoveries = useMemo(() => sortRows(
+    discoveries.filter(c => !discSearch || c.company_name.toLowerCase().includes(discSearch.toLowerCase())),
+    sortField
+  ), [discoveries, discSearch, sortField, sortDir])
+
+  const filteredResearched = useMemo(() => sortRows(
+    researched.filter(c => !resSearch || c.company_name.toLowerCase().includes(resSearch.toLowerCase())),
+    sortField
+  ), [researched, resSearch, sortField, sortDir])
+
+  const filteredProspects = useMemo(() => sortRows(
+    prospects.filter(c => !prospSearch || c.company_name.toLowerCase().includes(prospSearch.toLowerCase())),
+    sortField
+  ), [prospects, prospSearch, sortField, sortDir])
+
+  // ── KPI cards ─────────────────────────────────────────────────────────────
+  const kpiCards = [
+    {
+      key: 'discovery' as TabKey,
+      label: 'Discovery',
+      count: discoveries.length,
+      icon: <Newspaper size={18} color="#059669" />,
+      color: '#059669', bg: '#f0fdf4', border: '#bbf7d0'
+    },
+    {
+      key: 'researched' as TabKey,
+      label: 'Researched',
+      count: researched.length,
+      icon: <Zap size={18} color="#7c3aed" />,
+      color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe'
+    },
+    {
+      key: 'prospects' as TabKey,
+      label: 'Prospects',
+      count: prospects.length,
+      icon: <Target size={18} color="#3b82f6" />,
+      color: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe'
+    },
+    {
+      key: 'customers' as TabKey,
+      label: 'Existing Customers',
+      count: customers.length,
+      icon: <Users size={18} color="#0369a1" />,
+      color: '#0369a1', bg: '#eff6ff', border: '#bfdbfe'
+    },
+  ]
+
+  // ── Table header cell style ────────────────────────────────────────────────
+  const thStyle: React.CSSProperties = {
+    fontSize: '0.63rem', fontWeight: 800, color: '#9ca3af',
+    textTransform: 'uppercase', letterSpacing: '0.06em',
+    userSelect: 'none', display: 'flex', alignItems: 'center'
+  }
+
+  const rowBaseStyle = (i: number): React.CSSProperties => ({
+    display: 'grid', padding: '0.75rem 1.25rem', alignItems: 'center',
+    borderBottom: '1px solid #f9fafb',
+    backgroundColor: i % 2 === 0 ? 'white' : '#fafafa',
+    transition: 'background 0.12s', cursor: 'default'
+  })
+
+  // ── Loader ─────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', backgroundColor: '#f9fafb' }}>
+        <Sidebar />
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <TopBar title="Dashboard" />
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ width: '36px', height: '36px', border: '3px solid #f3f4f6', borderTop: '3px solid #7c3aed', borderRadius: '50%', margin: '0 auto 1rem', animation: 'spin 0.8s linear infinite' }} />
+              <p style={{ color: '#9ca3af', fontSize: '0.85rem', fontWeight: 500 }}>Loading data...</p>
+            </div>
+          </div>
+        </main>
+        <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
+      </div>
+    )
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#f9fafb' }}>
+    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#f9fafb', fontFamily: 'Inter, system-ui, sans-serif' }}>
       <Sidebar />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar title="Dashboard" />
 
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          {/* Middle Section: Discovery Feed Table */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
+
+          {/* ── Page Header ── */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#111827', margin: 0, letterSpacing: '-0.02em' }}>Dashboard</h1>
+            <p style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: '3px', fontWeight: 500 }}>
+              Track your customers, discover new leads, and view deep research results.
+            </p>
+          </div>
+
+          {/* ── KPI Cards (clickable tabs) ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+            {kpiCards.map(card => (
+              <div
+                key={card.key}
+                onClick={() => setActiveTab(card.key)}
+                style={{
+                  backgroundColor: activeTab === card.key ? card.color : 'white',
+                  borderRadius: '0.875rem',
+                  padding: '1.25rem 1.4rem',
+                  border: `1.5px solid ${activeTab === card.key ? card.color : '#e5e7eb'}`,
+                  boxShadow: activeTab === card.key ? `0 4px 20px ${card.color}33` : '0 1px 3px rgba(0,0,0,0.04)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 800,
+                    color: activeTab === card.key ? 'rgba(255,255,255,0.8)' : '#9ca3af',
+                    textTransform: 'uppercase', letterSpacing: '0.06em'
+                  }}>{card.label}</span>
+                  <div style={{
+                    padding: '0.4rem', borderRadius: '0.5rem',
+                    backgroundColor: activeTab === card.key ? 'rgba(255,255,255,0.2)' : card.bg,
+                  }}>
+                    {React.cloneElement(card.icon as React.ReactElement<any>, {
+                      color: activeTab === card.key ? 'white' : card.color
+                    })}
+                  </div>
+                </div>
+                <div style={{ fontSize: '2.25rem', fontWeight: 900, lineHeight: 1, color: activeTab === card.key ? 'white' : card.color }}>
+                  {card.count}
+                </div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: activeTab === card.key ? 'rgba(255,255,255,0.65)' : '#9ca3af', marginTop: '0.3rem' }}>
+                  {card.key === 'customers' && `companies tracked`}
+                  {card.key === 'discovery' && `signals found`}
+                  {card.key === 'researched' && `profiles complete`}
+                  {card.key === 'prospects' && `active leads`}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Content Panel ── */}
           <div style={{
-            flex: 1,
-            padding: '2rem',
-            display: 'flex',
-            flexDirection: 'column',
+            backgroundColor: 'white', borderRadius: '0.875rem',
+            border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
             overflow: 'hidden'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexShrink: 0 }}>
-              <div>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Intelligence Feed</h1>
-                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
-                  {filter === 'Today' ? "New discoveries found in the last 24 hours." :
-                    filter === 'Last 7 Days' ? "Discoveries from earlier this week (excluding today)." :
-                      "Historical intelligence signals (prior to last 7 days)."}
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.6rem' }}>
-                {['Today', 'Last 7 Days', 'All Time'].map((f) => (
+
+            {/* ── Tab Header ── */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6',
+              backgroundColor: '#fafafa', gap: '1rem', flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {kpiCards.map(card => (
                   <button
-                    key={f}
-                    onClick={() => setFilter(f)}
+                    key={card.key}
+                    onClick={() => setActiveTab(card.key)}
                     style={{
-                      padding: '0.5rem 0.85rem',
-                      borderRadius: '0.5rem',
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      backgroundColor: filter === f ? '#111827' : '#ffffff',
-                      color: filter === f ? '#ffffff' : '#4b5563',
-                      border: '1px solid #e5e7eb',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.02em'
+                      padding: '0.4rem 0.85rem', borderRadius: '0.4rem', cursor: 'pointer',
+                      fontWeight: 700, fontSize: '0.75rem', border: 'none',
+                      backgroundColor: activeTab === card.key ? '#111827' : 'transparent',
+                      color: activeTab === card.key ? 'white' : '#6b7280',
+                      transition: 'all 0.15s'
                     }}
                   >
-                    {f}
+                    {card.label}
+                    <span style={{
+                      marginLeft: '0.4rem', padding: '0.1rem 0.4rem', borderRadius: '2rem',
+                      backgroundColor: activeTab === card.key ? 'rgba(255,255,255,0.2)' : '#f3f4f6',
+                      fontSize: '0.65rem', fontWeight: 800,
+                      color: activeTab === card.key ? 'white' : '#6b7280'
+                    }}>{card.count}</span>
                   </button>
                 ))}
               </div>
+
+              {/* Search */}
+              {activeTab === 'customers' && <SearchInput value={custSearch} onChange={setCustSearch} placeholder="Search customers..." />}
+              {activeTab === 'discovery' && <SearchInput value={discSearch} onChange={setDiscSearch} placeholder="Search discoveries..." />}
+              {activeTab === 'researched' && <SearchInput value={resSearch} onChange={setResSearch} placeholder="Search researched companies..." />}
+              {activeTab === 'prospects' && <SearchInput value={prospSearch} onChange={setProspSearch} placeholder="Search prospects..." />}
             </div>
 
-            {/* Compact Filter Bar */}
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '1.5rem',
-              backgroundColor: 'white',
-              padding: '1rem',
-              borderRadius: '0.75rem',
-              border: '1px solid #e5e7eb',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-            }}>
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>Search Company</div>
-                <div style={{ position: 'relative' }}>
-                  <Search size={14} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                  <input
-                    type="text"
-                    placeholder="Search..."
-                    value={nameFilter}
-                    onChange={(e) => setNameFilter(e.target.value)}
-                    style={{ ...filterInputStyle, marginTop: 0, paddingLeft: '2rem' }}
-                  />
-                </div>
-              </div>
-              <div style={{ width: '140px' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>Lead Score</div>
-                <select
-                  value={scoreFilter}
-                  onChange={(e) => setScoreFilter(e.target.value)}
-                  style={{ ...filterInputStyle, marginTop: 0 }}
-                >
-                  <option>All</option>
-                  <option>High (80+)</option>
-                  <option>Medium (60-79)</option>
-                  <option>Low {"(<60)"}</option>
-                </select>
-              </div>
-              <div style={{ width: '160px' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>Location</div>
-                <input
-                  type="text"
-                  placeholder="e.g. USA"
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  style={{ ...filterInputStyle, marginTop: 0 }}
-                />
-              </div>
-              <div style={{ width: '140px' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', marginBottom: '4px' }}>Status</div>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  style={{ ...filterInputStyle, marginTop: 0 }}
-                >
-                  <option>All</option>
-                  <option>Discovery</option>
-                  <option>Prospect</option>
-                  <option>Customer</option>
-                </select>
-              </div>
-              {/* Filter Reset if needed could go here */}
-            </div>
-
-            {/* Feed Container - Scrollable */}
-            <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              paddingRight: '0.5rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem'
-            }}>
-              {loading ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                  <div style={{ width: '32px', height: '32px', border: '3px solid #f3f4f6', borderTop: '3px solid #111827', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                </div>
-              ) : filteredDiscoveries.length > 0 ? (
-                filteredDiscoveries.map((lead) => (
-                  <div
-                    key={lead.id}
-                    onClick={() => setSelectedCompany(lead)}
-                    style={{
-                      backgroundColor: 'white',
-                      borderRadius: '1rem',
-                      border: selectedCompany?.id === lead.id ? '2px solid #111827' : '1px solid #e5e7eb',
-                      overflow: 'hidden',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      boxShadow: selectedCompany?.id === lead.id ? '0 8px 24px rgba(0,0,0,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      flexShrink: 0
-                    }}
-                  >
-                    {/* Card Header */}
-                    <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fafafa' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div style={{
-                          width: '28px',
-                          height: '28px',
-                          borderRadius: '6px',
-                          backgroundColor: 'white',
-                          border: '1px solid #e5e7eb',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          overflow: 'hidden',
-                          flexShrink: 0
-                        }}>
-                          {lead.logo_url ? (
-                            <img src={lead.logo_url} alt={lead.company_name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }} />
-                          ) : <Building2 size={14} color="#9ca3af" />}
-                        </div>
-                        <span style={{ fontWeight: 800, color: '#111827', fontSize: '1rem', letterSpacing: '-0.01em' }}>{lead.company_name}</span>
-                      </div>
-
-                      {lead.status === 'prospect' ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#16a34a', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', backgroundColor: '#f0fdf4', padding: '0.25rem 0.5rem', borderRadius: '2rem', border: '1px solid #dcfce7' }}>
-                          <CheckCircle2 size={10} /> Prospect
-                        </div>
-                      ) : lead.status === 'customer' ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#1e40af', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', backgroundColor: '#eff6ff', padding: '0.25rem 0.5rem', borderRadius: '2rem', border: '1px solid #dbeafe' }}>
-                          <Building2 size={10} /> Customer
-                        </div>
-                      ) : (
-                        <div style={{ color: '#64748b', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', backgroundColor: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '2rem', border: '1px solid #f1f5f9' }}>
-                          Discovery
-                        </div>
-                      )}
+            {/* ══════════════════════════════════════════════════════════════════
+                TAB 2 — DISCOVERY
+            ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'discovery' && (
+              <>
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 140px', padding: '0.6rem 1.25rem', borderBottom: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  {[
+                    { label: 'Company', field: 'company_name' },
+                    { label: 'Industry', field: 'industry' },
+                    { label: 'Signal', field: 'signal_type' },
+                    { label: 'Action', field: null },
+                  ].map(col => (
+                    <div key={col.label} style={thStyle}>
+                      {col.label}
+                      {col.field && <SortBtn field={col.field} active={sortField === col.field} dir={sortDir} onClick={() => toggleSort(col.field!)} />}
                     </div>
+                  ))}
+                </div>
 
-                    {/* Card Body - News Focused */}
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {lead.news_image_url && (
-                        <div style={{ width: '100%', height: '180px', overflow: 'hidden' }}>
-                          <img src={lead.news_image_url} alt="Intelligence" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {/* Rows */}
+                <div style={{ maxHeight: 'calc(100vh - 420px)', overflowY: 'auto' }}>
+                  {filteredDiscoveries.length === 0 ? (
+                    <EmptyState message="No discovery signals with 'discovery' status found." />
+                  ) : filteredDiscoveries.map((c, i) => (
+                    <div
+                      key={c.id}
+                      style={{ ...rowBaseStyle(i), gridTemplateColumns: '1.6fr 1fr 1fr 140px' }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f0fdf4')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'white' : '#fafafa')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <CompanyAvatar name={c.company_name} logoUrl={c.logo_url} color="#059669" />
+                        <div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>{c.company_name}</div>
+                          {c.headquarters && (
+                            <div style={{ fontSize: '0.68rem', color: '#9ca3af', fontWeight: 500 }}>{c.headquarters}</div>
+                          )}
                         </div>
-                      )}
-                      <div style={{ padding: '1.25rem' }}>
-                        <div style={{ fontSize: '0.65rem', color: '#0284c7', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Intelligence Signal</div>
-                        <p style={{
-                          fontSize: '1rem',
-                          color: '#334155',
-                          lineHeight: 1.5,
-                          margin: 0,
-                          fontWeight: 600,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden'
-                        }}>
-                          {lead.news_details || "Awaiting latest intelligence signals..."}
-                        </p>
                       </div>
+                      <div style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500 }}>
+                        {c.industry || <span style={{ color: '#d1d5db' }}>—</span>}
+                      </div>
+                      <div>
+                        {c.signal_type ? (
+                          <span style={{
+                            padding: '0.2rem 0.55rem', borderRadius: '2rem',
+                            backgroundColor: '#f0fdf4', color: '#059669',
+                            border: '1px solid #bbf7d0',
+                            fontSize: '0.65rem', fontWeight: 700
+                          }}>{c.signal_type}</span>
+                        ) : <span style={{ color: '#d1d5db', fontSize: '0.75rem' }}>—</span>}
+                      </div>
+                      <Link
+                        href="/research"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.3rem 0.7rem', borderRadius: '0.4rem',
+                          fontSize: '0.7rem', fontWeight: 700, textDecoration: 'none',
+                          backgroundColor: '#f0fdf4', color: '#059669',
+                          border: '1px solid #bbf7d0', transition: 'all 0.15s'
+                        }}
+                      >
+                        Research <ArrowRight size={11} />
+                      </Link>
                     </div>
+                  ))}
+                </div>
 
-                    {/* Card Footer */}
-                    <div style={{
-                      padding: '1rem 1.25rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      backgroundColor: '#ffffff',
-                      borderTop: '1px solid #f3f4f6'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Score</span>
-                          <span style={{ fontWeight: 900, color: lead.lead_score >= 80 ? '#16a34a' : '#d97706', fontSize: '1.1rem' }}>{lead.lead_score}</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Location</span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#475569', fontSize: '0.85rem', fontWeight: 600 }}>
-                            <MapPin size={12} color="#94a3b8" />
-                            {(() => {
-                              if (!lead.location) return "USA";
-                              const parts = lead.location.split(',').map((p: string) => p.trim());
-                              const lastPart = parts[parts.length - 1];
-                              if (lastPart.length === 2 && lastPart === lastPart.toUpperCase()) return "USA";
-                              if (["US", "USA", "United States"].includes(lastPart)) return "USA";
-                              return lastPart;
-                            })()}
-                          </div>
+                <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600 }}>
+                    Showing {filteredDiscoveries.length} of {discoveries.length} discovery signals
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════════
+                TAB 3 — RESEARCHED
+            ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'researched' && (
+              <>
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 90px 130px 140px', padding: '0.6rem 1.25rem', borderBottom: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  {[
+                    { label: 'Company', field: 'company_name' },
+                    { label: 'Recommendation', field: 'lead_recommendation' },
+                    { label: 'Score', field: 'lead_score' },
+                    { label: 'Location', field: 'location' },
+                    { label: 'Action', field: null },
+                  ].map(col => (
+                    <div key={col.label} style={thStyle}>
+                      {col.label}
+                      {col.field && <SortBtn field={col.field} active={sortField === col.field} dir={sortDir} onClick={() => toggleSort(col.field!)} />}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Rows */}
+                <div style={{ maxHeight: 'calc(100vh - 420px)', overflowY: 'auto' }}>
+                  {filteredResearched.length === 0 ? (
+                    <EmptyState message="No researched companies yet. Start a research run to populate this." />
+                  ) : filteredResearched.map((c, i) => (
+                    <div
+                      key={c.id}
+                      style={{ ...rowBaseStyle(i), gridTemplateColumns: '1.5fr 0.9fr 90px 130px 140px' }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f5f3ff')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'white' : '#fafafa')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <CompanyAvatar name={c.company_name} logoUrl={c.logo_url} color="#7c3aed" />
+                        <div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>{c.company_name}</div>
+                          {c.outreach_angle && (
+                            <div style={{
+                              fontSize: '0.68rem', color: '#6b7280', fontWeight: 500,
+                              maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                            }}>{c.outreach_angle}</div>
+                          )}
                         </div>
                       </div>
+                      <div><RecoBadge value={c.lead_recommendation} /></div>
+                      <div>
+                        {c.lead_score !== null
+                          ? <ScoreRing score={Number(c.lead_score)} />
+                          : <span style={{ color: '#d1d5db', fontSize: '0.75rem' }}>—</span>
+                        }
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500 }}>
+                        {c.location || <span style={{ color: '#d1d5db' }}>—</span>}
+                      </div>
+                      <Link
+                        href={`/research?company=${encodeURIComponent(c.company_name)}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.35rem 0.8rem', borderRadius: '0.4rem',
+                          fontSize: '0.7rem', fontWeight: 700, textDecoration: 'none',
+                          backgroundColor: '#7c3aed', color: 'white',
+                          border: 'none', transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(124,58,237,0.3)'
+                        }}
+                      >
+                        View Profile <ArrowRight size={11} />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
 
-                      <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        {lead.news_link && (
-                          <a
-                            href={lead.news_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem',
-                              padding: '0.5rem 0.8rem',
-                              borderRadius: '0.5rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              backgroundColor: '#f1f5f9',
-                              color: '#475569',
-                              textDecoration: 'none',
-                              border: 'None',
-                              transition: 'all 0.2s'
-                            }}
-                          >
-                            Source <ExternalLink size={12} />
-                          </a>
-                        )}
-                        <button
+                <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600 }}>
+                    Showing {filteredResearched.length} of {researched.length} researched companies
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════════
+                TAB 4 — PROSPECTS
+            ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'prospects' && (
+              <>
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 140px', padding: '0.6rem 1.25rem', borderBottom: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  {[
+                    { label: 'Company', field: 'company_name' },
+                    { label: 'Added Date', field: 'created_at' },
+                    { label: 'Action', field: null },
+                  ].map(col => (
+                    <div key={col.label} style={thStyle}>
+                      {col.label}
+                      {col.field && <SortBtn field={col.field} active={sortField === col.field} dir={sortDir} onClick={() => toggleSort(col.field!)} />}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Rows */}
+                <div style={{ maxHeight: 'calc(100vh - 420px)', overflowY: 'auto' }}>
+                  {filteredProspects.length === 0 ? (
+                    <EmptyState message="No prospects added yet." />
+                  ) : filteredProspects.map((c, i) => (
+                    <div
+                      key={c.id}
+                      style={{ ...rowBaseStyle(i), gridTemplateColumns: '1.5fr 1fr 140px' }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'white' : '#fafafa')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <CompanyAvatar name={c.company_name} logoUrl={c.logo_url} color="#3b82f6" />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>{c.company_name}</span>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
+                        {new Date(c.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </div>
+                      <Link
+                        href={`/prospects?company=${encodeURIComponent(c.company_name)}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.3rem 0.7rem', borderRadius: '0.4rem',
+                          fontSize: '0.7rem', fontWeight: 700, textDecoration: 'none',
+                          backgroundColor: '#eff6ff', color: '#3b82f6',
+                          border: '1px solid #bfdbfe', transition: 'all 0.15s'
+                        }}
+                      >
+                        Details <ArrowRight size={11} />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600 }}>
+                    Showing {filteredProspects.length} of {prospects.length} active prospects
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════════
+                TAB 4 — EXISTING CUSTOMERS
+            ══════════════════════════════════════════════════════════════════ */}
+            {activeTab === 'customers' && (
+              <>
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', padding: '0.6rem 1.25rem', borderBottom: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  <div style={thStyle} onClick={() => toggleSort('company_name')}>
+                    Company Name <SortBtn field="company_name" active={sortField === 'company_name'} dir={sortDir} onClick={() => toggleSort('company_name')} />
+                  </div>
+                  <div style={thStyle}>Action</div>
+                </div>
+
+                {/* Rows */}
+                <div style={{ maxHeight: 'calc(100vh - 420px)', overflowY: 'auto' }}>
+                  {filteredCustomers.length === 0
+                    ? <EmptyState message="No customers match your search." />
+                    : filteredCustomers.map((c, i) => (
+                      <div
+                        key={c.id}
+                        style={{ ...rowBaseStyle(i), gridTemplateColumns: '1fr 160px' }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'white' : '#fafafa')}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <CompanyAvatar name={c.company_name} logoUrl={c.logo_url} color="#0369a1" />
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>{c.company_name}</span>
+                        </div>
+                        <Link
+                          href="/research"
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.4rem',
-                            padding: '0.5rem 1rem',
-                            borderRadius: '0.5rem',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            backgroundColor: selectedCompany?.id === lead.id ? '#111827' : '#ffffff',
-                            color: selectedCompany?.id === lead.id ? '#ffffff' : '#111827',
-                            border: '1px solid #111827',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
+                            display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                            padding: '0.3rem 0.7rem', borderRadius: '0.4rem',
+                            fontSize: '0.7rem', fontWeight: 700, textDecoration: 'none',
+                            backgroundColor: '#eff6ff', color: '#0369a1',
+                            border: '1px solid #bfdbfe', transition: 'all 0.15s'
                           }}
                         >
-                          Deep Dive <ArrowRight size={14} />
-                        </button>
+                          Research <ArrowRight size={11} />
+                        </Link>
                       </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '4rem', textAlign: 'center' }}>
-                  <p style={{ color: '#6b7280' }}>
-                    No intelligence signals found matching your criteria.
-                  </p>
+                    ))
+                  }
                 </div>
-              )}
-            </div>
+
+                <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid #f3f4f6', backgroundColor: '#fafafa' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600 }}>
+                    Showing {filteredCustomers.length} of {customers.length} existing customers
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Right Section: Discovery Intelligence Panel */}
-          <div style={{
-            width: '400px',
-            backgroundColor: '#ffffff',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            borderLeft: '1px solid #e5e7eb'
-          }}>
-            <NewsPanel companyData={selectedCompany} onStatusUpdate={handleStatusUpdate} />
-          </div>
+          <div style={{ height: '2rem' }} />
         </div>
       </main>
 
-      <style jsx>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+      <style>{`
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        input:focus { outline: 2px solid #7c3aed !important; }
       `}</style>
     </div>
   )
 }
-
