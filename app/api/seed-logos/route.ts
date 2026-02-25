@@ -3,10 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey)
+if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder')) {
+    console.error('Supabase configuration missing in API route!')
+}
+
+const supabaseAdmin = createClient(
+    supabaseUrl || 'https://placeholder.supabase.co',
+    supabaseKey || 'placeholder'
+)
 
 const LOGODEV_SECRET = process.env.NEXT_PUBLIC_LOGODEV_SECRET || ''  // sk_ → search API auth
 const LOGODEV_TOKEN = process.env.NEXT_PUBLIC_LOGODEV_TOKEN || ''  // pk_ → image CDN token
