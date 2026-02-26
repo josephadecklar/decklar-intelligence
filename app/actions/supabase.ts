@@ -318,11 +318,16 @@ export async function updateProspectMetadata(id: string, metadata: any) {
     }
 }
 
-export async function triggerFlowiseAction(companyName: string, type: string, chatflowId: string) {
+export async function triggerFlowiseAction(companyName: string, type: string, chatflowId?: string, customUrl?: string) {
     try {
         const apiKey = process.env.NEXT_PUBLIC_FLOWISE_API_KEY
-        // Assuming a standard Flowise endpoint. User may need to update this URL.
-        const flowiseUrl = `https://flowise-production-decklar.up.railway.app/api/v1/prediction/${chatflowId}`
+
+        let flowiseUrl = customUrl
+        if (!flowiseUrl && chatflowId) {
+            flowiseUrl = `https://flowise-production-decklar.up.railway.app/api/v1/prediction/${chatflowId}`
+        }
+
+        if (!flowiseUrl) throw new Error('No Chatflow ID or Custom URL provided')
 
         const response = await fetch(flowiseUrl, {
             method: 'POST',
@@ -331,9 +336,9 @@ export async function triggerFlowiseAction(companyName: string, type: string, ch
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                question: `Research ${type} for ${companyName}`,
+                question: companyName,
                 overrideConfig: {
-                    companyName: companyName
+                    company_name: companyName
                 }
             })
         })
@@ -344,9 +349,172 @@ export async function triggerFlowiseAction(companyName: string, type: string, ch
         }
 
         const data = await response.json()
-        return data.text || data
+        let result = Array.isArray(data) ? data : (data.text || data)
+
+        // If it's a string, try to parse it as JSON
+        if (typeof result === 'string') {
+            try {
+                // Remove potential markdown blocks
+                const cleanStr = result.replace(/```(json)?\n?|\n?```/g, '').trim();
+                return JSON.parse(cleanStr);
+            } catch (e) {
+                // If parsing fails, just return the string as-is
+                console.warn('triggerFlowiseAction: Result is string but not valid JSON:', e);
+                return result;
+            }
+        }
+
+        return result
     } catch (err: any) {
         console.error('triggerFlowiseAction error:', err)
         throw new Error(err.message)
+    }
+}
+
+export async function updateProspectLeads(id: string, leads: any[]) {
+    try {
+        // We first try the dedicated column, then fallback to metadata if that fails
+        const { error } = await supabaseAdmin
+            .from('decklar_prospects')
+            .update({ leads_data: leads })
+            .eq('id', id)
+
+        if (error) {
+            console.warn('Dedicated leads_data column failed, falling back to metadata:', error.message)
+            return await updateProspectMetadata(id, { leads_data: leads })
+        }
+
+        return true
+    } catch (err: any) {
+        console.error('updateProspectLeads error:', err)
+        throw new Error(err.message)
+    }
+}
+
+
+export async function updateProspectOutreach(id: string, leadUrl: string, outreach: any) {
+    try {
+        const { data: existing } = await supabaseAdmin
+            .from('decklar_prospects')
+            .select('outreach_data')
+            .eq('id', id)
+            .single()
+
+        const newOutreachData = {
+            ...(existing?.outreach_data || {}),
+            [leadUrl]: outreach,
+            updated_at: new Date().toISOString()
+        }
+
+        const { error } = await supabaseAdmin
+            .from('decklar_prospects')
+            .update({ outreach_data: newOutreachData })
+            .eq('id', id)
+
+        if (error) throw new Error(error.message)
+        return true
+    } catch (err: any) {
+        console.error('updateProspectOutreach error:', err)
+        throw new Error(err.message)
+    }
+}
+
+export async function getProspectLeads(prospectId: string) {
+    try {
+        // 1. Try to get leads from the dedicated table
+        const { data, error } = await supabaseAdmin
+            .from('decklar_prospect_leads')
+            .select('*')
+            .eq('prospect_id', prospectId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw new Error(error.message);
+
+        // 2. If empty, check if there's legacy data to sync
+        if (data && data.length === 0) {
+            const { data: prospect } = await supabaseAdmin
+                .from('decklar_prospects')
+                .select('leads_data')
+                .eq('id', prospectId)
+                .single();
+
+            if (prospect?.leads_data && Array.isArray(prospect.leads_data) && prospect.leads_data.length > 0) {
+                console.log('Syncing legacy leads for prospect:', prospectId);
+                await syncProspectLeads(prospectId, prospect.leads_data);
+
+                // Re-fetch now that they are synced
+                const { data: syncedData } = await supabaseAdmin
+                    .from('decklar_prospect_leads')
+                    .select('*')
+                    .eq('prospect_id', prospectId);
+                return syncedData || [];
+            }
+        }
+
+        return data || [];
+    } catch (err: any) {
+        console.error('getProspectLeads error:', err);
+        throw new Error(err.message);
+    }
+}
+
+export async function syncProspectLeads(prospectId: string, leads: any[]) {
+    try {
+        // First update the legacy column
+        await updateProspectLeads(prospectId, leads);
+
+        // Fetch existing outreach data for migration
+        const { data: prospect } = await supabaseAdmin
+            .from('decklar_prospects')
+            .select('outreach_data')
+            .eq('id', prospectId)
+            .single();
+
+        // Then ensure each lead exists in the new table
+        const leadInserts = leads.map(lead => {
+            const url = lead.link || lead.linkedin_url;
+            return {
+                prospect_id: prospectId,
+                name: lead.name || 'Unknown',
+                title: lead.title || lead.current_title || lead.occupation || lead.role || '',
+                linkedin_url: url,
+                snippet: lead.snippet || '',
+                location: lead.location || '',
+                // Carry over existing outreach if it exists in the company object
+                outreach_data: prospect?.outreach_data?.[url] || null
+            };
+        }).filter(l => l.linkedin_url);
+
+        if (leadInserts.length === 0) return true;
+
+        const { error } = await supabaseAdmin
+            .from('decklar_prospect_leads')
+            .upsert(leadInserts, { onConflict: 'prospect_id, linkedin_url' });
+
+        if (error) throw new Error(error.message);
+        return true;
+    } catch (err: any) {
+        console.error('syncProspectLeads error:', err);
+        throw new Error(err.message);
+    }
+}
+
+export async function updateLeadOutreach(prospectId: string, linkedinUrl: string, outreach: any) {
+    try {
+        // Update the specific row in the new table
+        const { error } = await supabaseAdmin
+            .from('decklar_prospect_leads')
+            .update({ outreach_data: outreach, updated_at: new Date().toISOString() })
+            .match({ prospect_id: prospectId, linkedin_url: linkedinUrl });
+
+        if (error) throw new Error(error.message);
+
+        // Also update the legacy company-level column for compatibility
+        await updateProspectOutreach(prospectId, linkedinUrl, outreach);
+
+        return true;
+    } catch (err: any) {
+        console.error('updateLeadOutreach error:', err);
+        throw new Error(err.message);
     }
 }
