@@ -290,3 +290,63 @@ export async function searchCompanies(q: string) {
         throw new Error(err.message)
     }
 }
+
+export async function updateProspectMetadata(id: string, metadata: any) {
+    try {
+        const { data: existing } = await supabaseAdmin
+            .from('decklar_prospects')
+            .select('metadata')
+            .eq('id', id)
+            .single()
+
+        const newMetadata = {
+            ...(existing?.metadata || {}),
+            ...metadata,
+            updated_at: new Date().toISOString()
+        }
+
+        const { error } = await supabaseAdmin
+            .from('decklar_prospects')
+            .update({ metadata: newMetadata })
+            .eq('id', id)
+
+        if (error) throw new Error(error.message)
+        return true
+    } catch (err: any) {
+        console.error('updateProspectMetadata error:', err)
+        throw new Error(err.message)
+    }
+}
+
+export async function triggerFlowiseAction(companyName: string, type: string, chatflowId: string) {
+    try {
+        const apiKey = process.env.NEXT_PUBLIC_FLOWISE_API_KEY
+        // Assuming a standard Flowise endpoint. User may need to update this URL.
+        const flowiseUrl = `https://flowise-production-decklar.up.railway.app/api/v1/prediction/${chatflowId}`
+
+        const response = await fetch(flowiseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                question: `Research ${type} for ${companyName}`,
+                overrideConfig: {
+                    companyName: companyName
+                }
+            })
+        })
+
+        if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Flowise error: ${response.status} - ${errorText}`)
+        }
+
+        const data = await response.json()
+        return data.text || data
+    } catch (err: any) {
+        console.error('triggerFlowiseAction error:', err)
+        throw new Error(err.message)
+    }
+}
