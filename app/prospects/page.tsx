@@ -260,8 +260,9 @@ export default function ProspectsPage() {
                                     style={{
                                         padding: '0.85rem 1.25rem', fontSize: '0.8rem', fontWeight: 700,
                                         color: activeTab === 'enrichment' ? '#3b82f6' : '#94a3b8',
+                                        backgroundColor: 'transparent',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: `2px solid ${activeTab === 'enrichment' ? '#3b82f6' : 'transparent'}`,
-                                        backgroundColor: 'transparent', border: 'none',
                                         cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem'
                                     }}
                                 >
@@ -272,8 +273,9 @@ export default function ProspectsPage() {
                                     style={{
                                         padding: '0.85rem 1.25rem', fontSize: '0.8rem', fontWeight: 700,
                                         color: activeTab === 'outreach' ? '#10b981' : '#94a3b8',
+                                        backgroundColor: 'transparent',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: `2px solid ${activeTab === 'outreach' ? '#10b981' : 'transparent'}`,
-                                        backgroundColor: 'transparent', border: 'none',
                                         cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem'
                                     }}
                                 >
