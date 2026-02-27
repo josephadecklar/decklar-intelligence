@@ -175,9 +175,12 @@ export default function ResearchPage() {
                         textInput: {
                             placeholder: "Ask about ${companyName}...",
                             backgroundColor: "#ffffff"
-                        }
+                        },
+                        showPoweredBy: false,
+                        poweredByTextColor: "transparent"
                     }
                 },
+                showPoweredBy: false,
                 chatflowConfig: {
                     vars: { companyName: "${companyName}", companyId: "${companyId}" }
                 }
@@ -236,7 +239,7 @@ export default function ResearchPage() {
     return (
         <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden' }}>
             <TopBar
-                title={`Research Queue ${selectedItem ? ` / ${selectedItem.company_name}` : ''}`}
+                title={`Research ${selectedItem ? ` / ${selectedItem.company_name}` : ''}`}
                 onBack={selectedItem ? () => setSelectedItem(null) : undefined}
             />
 

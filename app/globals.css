@@ -133,3 +133,8 @@ body {
 .btn-secondary:hover {
   background-color: #d1d5db;
 }
+
+/* Hide Flowise Branding specifically if it escapes JS config */
+flowise-chatbot {
+  --flowise-powered-by-display: none !important;
+}

@@ -13,6 +13,9 @@ interface TopBarProps {
 export default function TopBar({ title, showBack = false, onBack }: TopBarProps) {
     const router = useRouter()
 
+    // Split the title into parts (e.g., "Research Queue / Apple Inc.")
+    const titleParts = title.split(' / ')
+
     const handleBack = () => {
         if (onBack) {
             onBack();
@@ -35,41 +38,49 @@ export default function TopBar({ title, showBack = false, onBack }: TopBarProps)
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#64748b' }}>
-                    <Home size={14} style={{ cursor: 'pointer' }} onClick={() => router.push('/')} />
-                    <ChevronRight size={14} />
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Intelligence
-                    </span>
+                    <Home
+                        size={14}
+                        style={{ cursor: 'pointer', transition: 'color 0.15s' }}
+                        onClick={() => router.push('/')}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                    />
                     <ChevronRight size={14} />
                 </div>
-                <h1 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.01em' }}>
-                    {title}
-                </h1>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {titleParts.map((part, index) => (
+                        <React.Fragment key={index}>
+                            {index > 0 && <ChevronRight size={14} color="#cbd5e1" />}
+                            <h1
+                                onClick={index === 0 && titleParts.length > 1 ? handleBack : undefined}
+                                style={{
+                                    fontSize: '1.1rem',
+                                    fontWeight: index === titleParts.length - 1 ? 800 : 600,
+                                    color: index === titleParts.length - 1 ? '#111827' : '#94a3b8',
+                                    margin: 0,
+                                    letterSpacing: '-0.01em',
+                                    cursor: (index === 0 && titleParts.length > 1) ? 'pointer' : 'default',
+                                    transition: 'color 0.15s'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (index === 0 && titleParts.length > 1) {
+                                        e.currentTarget.style.color = '#111827'
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (index === 0 && titleParts.length > 1) {
+                                        e.currentTarget.style.color = '#94a3b8'
+                                    }
+                                }}
+                            >
+                                {part}
+                            </h1>
+                        </React.Fragment>
+                    ))}
+                </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <button
-                    onClick={handleBack}
-                    style={{
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #e5e7eb',
-                        backgroundColor: '#ffffff',
-                        color: '#4b5563',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f9fafb' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ffffff' }}
-                >
-                    <ArrowLeft size={14} /> Go Back
-                </button>
-            </div>
         </div>
     )
 }

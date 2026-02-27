@@ -98,7 +98,7 @@ export default function DiscoveryPage() {
     return (
         <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden' }}>
             <TopBar
-                title={`Discovery Feed ${selectedLead ? ` / ${selectedLead.company_name}` : ''}`}
+                title={`Discover Feed ${selectedLead ? ` / ${selectedLead.company_name}` : ''}`}
                 onBack={selectedLead ? () => setSelectedLead(null) : undefined}
             />
 

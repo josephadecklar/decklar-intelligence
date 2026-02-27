@@ -7,7 +7,7 @@ import { Home, Target, Building2, Newspaper } from 'lucide-react'
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
-    { name: 'Discovery', href: '/discovery', icon: Newspaper },
+    { name: 'Discover Feed', href: '/discovery', icon: Newspaper },
     { name: 'Research', href: '/research', icon: Building2 },
     { name: 'Prospects', href: '/prospects', icon: Target },
 ]
