@@ -228,7 +228,10 @@ export default function ProspectsPage() {
 
     return (
         <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#f3f4f6' }}>
-            <TopBar title="Growth Intelligence & Outreach" />
+            <TopBar
+                title={`Prospects ${selectedProspect ? ` / ${selectedProspect.company_name}` : ''}`}
+                onBack={selectedProspect ? () => setSelectedProspect(null) : undefined}
+            />
 
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 

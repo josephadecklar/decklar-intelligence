@@ -235,7 +235,10 @@ export default function ResearchPage() {
 
     return (
         <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden' }}>
-            <TopBar title="Research Queue" />
+            <TopBar
+                title={`Research Queue ${selectedItem ? ` / ${selectedItem.company_name}` : ''}`}
+                onBack={selectedItem ? () => setSelectedItem(null) : undefined}
+            />
 
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', backgroundColor: '#f9fafb' }}>
 
