@@ -6,8 +6,6 @@ import {
     getProspects,
     updateProspectMetadata,
     triggerFlowiseAction,
-    updateProspectLeads,
-    updateProspectOutreach,
     getProspectLeads,
     syncProspectLeads,
     updateLeadOutreach
