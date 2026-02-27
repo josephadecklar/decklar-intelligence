@@ -371,53 +371,6 @@ export async function triggerFlowiseAction(companyName: string, type: string, ch
     }
 }
 
-export async function updateProspectLeads(id: string, leads: any[]) {
-    try {
-        // We first try the dedicated column, then fallback to metadata if that fails
-        const { error } = await supabaseAdmin
-            .from('decklar_prospects')
-            .update({ leads_data: leads })
-            .eq('id', id)
-
-        if (error) {
-            console.warn('Dedicated leads_data column failed, falling back to metadata:', error.message)
-            return await updateProspectMetadata(id, { leads_data: leads })
-        }
-
-        return true
-    } catch (err: any) {
-        console.error('updateProspectLeads error:', err)
-        throw new Error(err.message)
-    }
-}
-
-
-export async function updateProspectOutreach(id: string, leadUrl: string, outreach: any) {
-    try {
-        const { data: existing } = await supabaseAdmin
-            .from('decklar_prospects')
-            .select('outreach_data')
-            .eq('id', id)
-            .single()
-
-        const newOutreachData = {
-            ...(existing?.outreach_data || {}),
-            [leadUrl]: outreach,
-            updated_at: new Date().toISOString()
-        }
-
-        const { error } = await supabaseAdmin
-            .from('decklar_prospects')
-            .update({ outreach_data: newOutreachData })
-            .eq('id', id)
-
-        if (error) throw new Error(error.message)
-        return true
-    } catch (err: any) {
-        console.error('updateProspectOutreach error:', err)
-        throw new Error(err.message)
-    }
-}
 
 export async function getProspectLeads(prospectId: string) {
     try {
@@ -460,10 +413,7 @@ export async function getProspectLeads(prospectId: string) {
 
 export async function syncProspectLeads(prospectId: string, leads: any[]) {
     try {
-        // First update the legacy column
-        await updateProspectLeads(prospectId, leads);
-
-        // Fetch existing outreach data for migration
+        // Fetch existing outreach data for migration (from legacy to new table)
         const { data: prospect } = await supabaseAdmin
             .from('decklar_prospects')
             .select('outreach_data')
@@ -501,16 +451,30 @@ export async function syncProspectLeads(prospectId: string, leads: any[]) {
 
 export async function updateLeadOutreach(prospectId: string, linkedinUrl: string, outreach: any) {
     try {
+        let outreachToStore = outreach;
+
+        // Ensure it's valid JSON if it's a string
+        if (typeof outreach === 'string' && outreach.trim() !== '') {
+            try {
+                // Remove potential markdown blocks
+                const cleanStr = outreach.replace(/```(json)?\n?|\n?```/g, '').trim();
+                outreachToStore = JSON.parse(cleanStr);
+            } catch (e) {
+                console.warn('updateLeadOutreach: Result is string but not valid JSON, storing as is:', e);
+                // Keep as original if it's just a text message, but try one more time for deep nesting
+            }
+        }
+
         // Update the specific row in the new table
         const { error } = await supabaseAdmin
             .from('decklar_prospect_leads')
-            .update({ outreach_data: outreach, updated_at: new Date().toISOString() })
+            .update({
+                outreach_data: outreachToStore,
+                updated_at: new Date().toISOString()
+            })
             .match({ prospect_id: prospectId, linkedin_url: linkedinUrl });
 
         if (error) throw new Error(error.message);
-
-        // Also update the legacy company-level column for compatibility
-        await updateProspectOutreach(prospectId, linkedinUrl, outreach);
 
         return true;
     } catch (err: any) {

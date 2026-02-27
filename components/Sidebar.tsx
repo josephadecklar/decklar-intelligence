@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Home, Target, Building2, Newspaper } from 'lucide-react'
@@ -50,39 +51,38 @@ export default function Sidebar() {
 
             {/* Navigation */}
             <nav style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <h2 style={{
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    color: '#9ca3af',
-                    marginBottom: '0.75rem',
-                    paddingLeft: '0.75rem',
-                    letterSpacing: '0.05em'
-                }}>
-                    MAIN
-                </h2>
-                {navigation.map((item) => {
+                {navigation.map((item, index) => {
                     const isActive = pathname === item.href || (item.href !== '/' && pathname?.startsWith(item.href))
                     const Icon = item.icon
                     return (
-                        <Link
-                            key={item.name}
-                            href={item.href}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.75rem',
-                                padding: '0.625rem 0.75rem',
-                                borderRadius: '0.5rem',
-                                textDecoration: 'none',
-                                transition: 'all 0.15s',
-                                backgroundColor: isActive ? '#111827' : 'transparent',
-                                color: isActive ? '#ffffff' : '#4b5563',
-                                fontWeight: isActive ? 600 : 500,
-                            }}
-                        >
-                            <Icon size={18} color={isActive ? '#ffffff' : '#6b7280'} />
-                            <span style={{ fontSize: '0.9rem' }}>{item.name}</span>
-                        </Link>
+                        <React.Fragment key={item.name}>
+                            <Link
+                                href={item.href}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.625rem 0.75rem',
+                                    borderRadius: '0.5rem',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.15s',
+                                    backgroundColor: isActive ? '#111827' : 'transparent',
+                                    color: isActive ? '#ffffff' : '#4b5563',
+                                    fontWeight: isActive ? 600 : 500,
+                                }}
+                            >
+                                <Icon size={18} color={isActive ? '#ffffff' : '#6b7280'} />
+                                <span style={{ fontSize: '0.9rem' }}>{item.name}</span>
+                            </Link>
+                            {index === 0 && (
+                                <div style={{
+                                    height: '1px',
+                                    backgroundColor: '#e5e7eb',
+                                    margin: '0.75rem 0.75rem',
+                                    width: 'auto'
+                                }} />
+                            )}
+                        </React.Fragment>
                     )
                 })}
             </nav>
